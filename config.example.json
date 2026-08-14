@@ -1,0 +1,19 @@
+{
+  "observation": {
+    "defaultApplicationBehavior": "observe",
+    "defaultURLBehavior": "observe",
+    "allowlist": [],
+    "blocklist": [
+      {
+        "scope": "application",
+        "bundleID": "com.apple.keychainaccess"
+      },
+      {
+        "scope": "url",
+        "urlDomain": "bank.example"
+      }
+    ]
+  },
+  "showMenuBarIcon": true,
+  "captureText": true
+}

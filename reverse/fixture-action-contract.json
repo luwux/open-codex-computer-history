@@ -1,0 +1,25 @@
+{
+  "bundleIdentifier": "dev.opencomputerhistory.fixture",
+  "syntheticInputs": {
+    "regularText": "synthetic note",
+    "secureText": "synthetic secret",
+    "shortcut": "command+r",
+    "selection": "Beta",
+    "dragSource": "fixture-drag-source",
+    "dropTarget": "fixture-drop-target"
+  },
+  "requiredObservableKinds": [
+    "window.changed",
+    "keyboard.text_input",
+    "keyboard.submit",
+    "keyboard.shortcut",
+    "selection.changed",
+    "mouse.click",
+    "mouse.drag"
+  ],
+  "expectedCountPerKind": 1,
+  "privacyExpectation": {
+    "secureInputEventsAreSuppressed": true,
+    "secureTextIsNeverPersisted": true
+  }
+}

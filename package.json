@@ -1,0 +1,61 @@
+{
+  "name": "open-codex-computer-history",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "version": "0.2.0",
+  "description": "Clean-room, event-stream implementation of Codex Computer History for macOS",
+  "author": "Open Codex Computer History contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hqhq1025/open-codex-computer-history.git"
+  },
+  "homepage": "https://github.com/hqhq1025/open-codex-computer-history#readme",
+  "bugs": {
+    "url": "https://github.com/hqhq1025/open-codex-computer-history/issues"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "codex",
+    "computer-history",
+    "macos",
+    "accessibility",
+    "event-stream"
+  ],
+  "scripts": {
+    "build": "mcp-use build",
+    "dev": "mcp-use dev",
+    "start": "mcp-use start",
+    "deploy": "mcp-use deploy",
+    "typecheck": "mcp-use typecheck",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "collector:build": "swift build --package-path collector",
+    "collector:test": "swift test --package-path collector",
+    "collector:record": "swift run --package-path collector open-history record",
+    "pipeline:once": "node --import tsx scripts/pipeline.ts once",
+    "pipeline:run": "node --import tsx scripts/pipeline.ts run",
+    "menu:run": "swift run --package-path collector open-history-menu",
+    "parity": "node --import tsx scripts/parity.ts",
+    "ipc:run": "node --import tsx scripts/native-ipc.ts",
+    "app:package": "scripts/package-macos-app.sh release",
+    "install:local": "scripts/install-local.sh",
+    "uninstall:local": "scripts/uninstall-local.sh"
+  },
+  "dependencies": {
+    "@mcp-use/client": "^2.0.1",
+    "mcp-use": "2.0.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "tsx": "^4.20.5",
+    "typescript": "^7.0.2"
+  }
+}
