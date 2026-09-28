@@ -203,7 +203,8 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         }
     }
 
-    private static let browserBundleIdentifiers = Set([
+    /// Browsers whose windows carry web URLs and private-browsing titles.
+    public static let browserBundleIdentifiers: Set<String> = [
         "com.google.Chrome",
         "com.google.Chrome.beta",
         "com.google.Chrome.canary",
@@ -217,5 +218,8 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         "org.mozilla.firefox",
         "org.mozilla.firefoxdeveloperedition",
         "org.mozilla.nightly",
-    ])
+        "company.thebrowser.Browser",
+        "company.thebrowser.dia",
+        "com.openai.atlas",
+    ]
 }

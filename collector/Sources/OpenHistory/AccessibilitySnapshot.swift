@@ -36,22 +36,6 @@ struct AccessibilitySnapshot {
 }
 
 enum AccessibilityReader {
-    private static let browserBundleIdentifiers = Set([
-        "com.google.Chrome",
-        "com.google.Chrome.beta",
-        "com.google.Chrome.canary",
-        "com.google.Chrome.dev",
-        "com.apple.Safari",
-        "com.apple.SafariTechnologyPreview",
-        "com.microsoft.edgemac",
-        "com.microsoft.edgemac.Beta",
-        "com.microsoft.edgemac.Canary",
-        "com.microsoft.edgemac.Dev",
-        "org.mozilla.firefox",
-        "org.mozilla.firefoxdeveloperedition",
-        "org.mozilla.nightly",
-    ])
-
     static func snapshot(
         processIdentifier: pid_t,
         at point: CGPoint? = nil
@@ -165,7 +149,7 @@ enum AccessibilityReader {
     ) -> String? {
         guard let root,
               let bundleIdentifier,
-              browserBundleIdentifiers.contains(bundleIdentifier)
+              ObservationPolicy.browserBundleIdentifiers.contains(bundleIdentifier)
         else {
             return nil
         }

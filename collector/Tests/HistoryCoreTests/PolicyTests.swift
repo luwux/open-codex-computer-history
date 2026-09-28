@@ -20,6 +20,27 @@ final class PolicyTests: XCTestCase {
         )
     }
 
+    func testChromiumBrowsersBeyondChromeAreRecognized() {
+        let policy = ObservationPolicy()
+        for bundleIdentifier in [
+            "company.thebrowser.dia",
+            "company.thebrowser.Browser",
+            "com.openai.atlas",
+        ] {
+            XCTAssertTrue(ObservationPolicy.browserBundleIdentifiers.contains(bundleIdentifier))
+            XCTAssertEqual(
+                policy.shouldSuppress(
+                    bundleIdentifier: bundleIdentifier,
+                    windowTitle: "New Incognito Tab",
+                    urlDomain: nil,
+                    role: "AXWebArea",
+                    subrole: nil
+                ),
+                "private_browsing"
+            )
+        }
+    }
+
     func testLocalizedChromeIncognitoTitleIsSuppressed() {
         let policy = ObservationPolicy()
         XCTAssertEqual(
