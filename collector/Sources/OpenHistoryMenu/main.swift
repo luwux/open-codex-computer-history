@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import HistoryCore
 import SwiftUI
 
@@ -62,6 +63,7 @@ final class MenuController: ObservableObject {
     private let homeURL: URL
     private let controlStore: RuntimeControlStore
     private var timer: Timer?
+    private var permissionTimer: Timer?
 
     init() {
         if let override = ProcessInfo.processInfo.environment[
@@ -83,6 +85,36 @@ final class MenuController: ObservableObject {
             [weak self] _ in
             Task { @MainActor in
                 self?.refresh()
+            }
+        }
+        if status.state == .stopped,
+           controlStore.readControl()?.state != .paused
+        {
+            startCollector()
+        }
+    }
+
+    /// Starts recording once Accessibility and Input Monitoring are granted.
+    /// The menu app requests them itself so System Settings lists this app,
+    /// which is also the responsible process for the collector it launches.
+    private func startCollector() {
+        if CollectorPermissions.isGranted {
+            launchCollector()
+            return
+        }
+        CollectorPermissions.request()
+        permissionTimer?.invalidate()
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) {
+            [weak self] timer in
+            Task { @MainActor in
+                guard let self, CollectorPermissions.isGranted else {
+                    return
+                }
+                timer.invalidate()
+                self.permissionTimer = nil
+                if self.status.state == .stopped {
+                    self.launchCollector()
+                }
             }
         }
     }
@@ -126,7 +158,7 @@ final class MenuController: ObservableObject {
     func resume() {
         try? controlStore.writeControl(.running)
         if status.state == .stopped {
-            launchCollector()
+            startCollector()
         }
         refresh()
     }
@@ -202,5 +234,19 @@ final class MenuController: ObservableObject {
             startedAt: nil,
             endedAt: nil
         )
+    }
+}
+
+private enum CollectorPermissions {
+    static var isGranted: Bool {
+        AXIsProcessTrusted() && CGPreflightListenEventAccess()
+    }
+
+    static func request() {
+        let options = [
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true,
+        ] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        _ = CGRequestListenEventAccess()
     }
 }
