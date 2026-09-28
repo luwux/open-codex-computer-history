@@ -13,6 +13,24 @@ public enum HistoryEventKind: String, Codable, CaseIterable, Sendable {
     case terminalValueChanged = "terminal.value_changed"
     case selectionChanged = "selection.changed"
     case debugError = "debug.error"
+    // Open extension: presence boundaries the original recorder does not emit.
+    // They carry no app, window, or AX payload.
+    case systemScreenLocked = "system.screen_locked"
+    case systemScreenUnlocked = "system.screen_unlocked"
+    case systemWillSleep = "system.will_sleep"
+    case systemDidWake = "system.did_wake"
+
+    /// Lifecycle and presence events are written even when the frontmost app
+    /// is suppressed, and never carry an app snapshot of their own.
+    public var isBoundary: Bool {
+        switch self {
+        case .sessionStarted, .sessionEnded, .systemScreenLocked,
+             .systemScreenUnlocked, .systemWillSleep, .systemDidWake:
+            true
+        default:
+            false
+        }
+    }
 }
 
 public struct EventStreamApp: Codable, Equatable, Sendable {

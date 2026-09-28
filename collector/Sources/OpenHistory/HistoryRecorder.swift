@@ -38,6 +38,7 @@ final class HistoryRecorder {
     private var sequence = 0
     private var currentProcessIdentifier: pid_t?
     private var workspaceObserver: NSObjectProtocol?
+    private var presenceObservers: [(NotificationCenter, NSObjectProtocol)] = []
     private var accessibilityObserver: AXObserver?
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
@@ -119,6 +120,10 @@ final class HistoryRecorder {
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
         }
+        for (center, observer) in presenceObservers {
+            center.removeObserver(observer)
+        }
+        presenceObservers.removeAll()
         if let accessibilityObserver {
             CFRunLoopRemoveSource(
                 CFRunLoopGetCurrent(),
@@ -213,6 +218,36 @@ final class HistoryRecorder {
             }
             self?.switchFrontmostApplication(to: app)
         }
+        observePresence()
+    }
+
+    /// Lock, unlock, sleep, and wake bound the time the user can be at the
+    /// Mac. Idle time needs no event: it is the gap between recorded events.
+    private func observePresence() {
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        let distributedCenter = DistributedNotificationCenter.default()
+        let sources: [(NotificationCenter, Notification.Name, HistoryEventKind)] = [
+            (distributedCenter, Notification.Name("com.apple.screenIsLocked"), .systemScreenLocked),
+            (distributedCenter, Notification.Name("com.apple.screenIsUnlocked"), .systemScreenUnlocked),
+            (workspaceCenter, NSWorkspace.willSleepNotification, .systemWillSleep),
+            (workspaceCenter, NSWorkspace.didWakeNotification, .systemDidWake),
+        ]
+        presenceObservers = sources.map { center, name, kind in
+            let observer = center.addObserver(forName: name, object: nil, queue: .main) {
+                [weak self] _ in
+                self?.appendPresence(kind)
+            }
+            return (center, observer)
+        }
+    }
+
+    private func appendPresence(_ kind: HistoryEventKind) {
+        guard !stopped, recorderState == .running else {
+            return
+        }
+        flushTextBuffer()
+        flushTerminalBuffer()
+        try? append(kind: kind, snapshot: nil)
     }
 
     private func switchFrontmostApplication(to application: NSRunningApplication) {
@@ -434,7 +469,7 @@ final class HistoryRecorder {
                 subrole: $0.element?.subrole
             )
         }
-        let isBoundary = kind == .sessionStarted || kind == .sessionEnded
+        let isBoundary = kind.isBoundary
         let eventSnapshot = isBoundary && suppressionReason != nil ? nil : snapshot
         let event = HistoryEvent(
             id: sequence,
@@ -677,7 +712,11 @@ final class HistoryRecorder {
         case .sessionStarted,
              .sessionEnded,
              .keyboardTextInput,
-             .selectionChanged:
+             .selectionChanged,
+             .systemScreenLocked,
+             .systemScreenUnlocked,
+             .systemWillSleep,
+             .systemDidWake:
             return false
         }
     }

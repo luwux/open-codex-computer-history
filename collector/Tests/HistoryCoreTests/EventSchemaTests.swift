@@ -54,6 +54,37 @@ final class EventSchemaTests: XCTestCase {
         XCTAssertNil(object["segmentID"])
     }
 
+    func testPresenceEventsAreBoundariesWithoutPayload() throws {
+        let kinds: [HistoryEventKind: String] = [
+            .systemScreenLocked: "system.screen_locked",
+            .systemScreenUnlocked: "system.screen_unlocked",
+            .systemWillSleep: "system.will_sleep",
+            .systemDidWake: "system.did_wake",
+        ]
+        for (kind, rawValue) in kinds {
+            XCTAssertEqual(kind.rawValue, rawValue)
+            XCTAssertTrue(kind.isBoundary)
+
+            let event = HistoryEvent(
+                id: 1,
+                timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+                kind: kind
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: encoder.encode(event))
+                    as? [String: Any]
+            )
+            XCTAssertEqual(object["kind"] as? String, rawValue)
+            XCTAssertNil(object["app"])
+            XCTAssertNil(object["window"])
+            XCTAssertNil(object["ax"])
+        }
+        XCTAssertTrue(HistoryEventKind.sessionStarted.isBoundary)
+        XCTAssertFalse(HistoryEventKind.windowChanged.isBoundary)
+    }
+
     func testSettingsEncodeLikeRecoveredIPCSettings() throws {
         let settings = ObservationPolicy(
             observation: .init(

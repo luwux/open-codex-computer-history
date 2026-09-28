@@ -223,6 +223,19 @@ selection.changed
 debug.error
 ```
 
+This implementation adds four presence boundaries that the original recorder
+does not emit. They are written even when the frontmost app is suppressed and
+carry no app, window, or AX payload:
+
+```text
+system.screen_locked
+system.screen_unlocked
+system.will_sleep
+system.did_wake
+```
+
+Idle time is not recorded as an event; it is the gap between events.
+
 ## Segment files
 
 ```text
