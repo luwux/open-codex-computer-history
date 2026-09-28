@@ -203,6 +203,13 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         }
     }
 
+    /// Roles that only arrange children. Without a title, value, or other
+    /// attribute they carry no information and are omitted from AX renders.
+    public static func isStructuralContainer(role: String) -> Bool {
+        ["AXUnknown", "AXGroup", "AXGenericElement", "AXSplitGroup", "AXLayoutArea", "AXLayoutItem"]
+            .contains(role)
+    }
+
     /// Whether an accessibility element is a browser's address bar. Dia exposes
     /// its bar as an `AXTextArea` identified `navigationBarAssistantBarTextField`.
     public static func isBrowserAddressField(role: String?, label: String) -> Bool {
@@ -245,6 +252,21 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         }
         return url.absoluteString
     }
+
+    /// Chromium-based browsers, whose web accessibility tree must be requested.
+    public static let chromiumBrowserBundleIdentifiers: Set<String> = [
+        "com.google.Chrome",
+        "com.google.Chrome.beta",
+        "com.google.Chrome.canary",
+        "com.google.Chrome.dev",
+        "com.microsoft.edgemac",
+        "com.microsoft.edgemac.Beta",
+        "com.microsoft.edgemac.Canary",
+        "com.microsoft.edgemac.Dev",
+        "company.thebrowser.Browser",
+        "company.thebrowser.dia",
+        "com.openai.atlas",
+    ]
 
     /// Browsers whose windows carry web URLs and private-browsing titles.
     public static let browserBundleIdentifiers: Set<String> = [

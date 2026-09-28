@@ -234,7 +234,22 @@ system.will_sleep
 system.did_wake
 ```
 
+Two more extensions report video playback, detected from display-sleep power
+assertions and attributed to the owning app bundle (browser helpers resolve to
+their browser). `app` names the owner and `diagnostic.message` the assertion
+name, such as `Video Wake Lock`:
+
+```text
+media.playback_started
+media.playback_stopped
+```
+
 Idle time is not recorded as an event; it is the gap between events.
+
+AX trees in this implementation render web areas first (with their `url`),
+skip attribute-free structural containers, and request web accessibility from
+Chromium and Electron apps (`AXManualAccessibility`, falling back to
+`AXEnhancedUserInterface` for Chromium browsers).
 
 ## Segment files
 

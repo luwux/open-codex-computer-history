@@ -39,6 +39,9 @@ final class HistoryRecorder {
     private var currentProcessIdentifier: pid_t?
     private var workspaceObserver: NSObjectProtocol?
     private var presenceObservers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var webAccessibilityProcesses = Set<pid_t>()
+    private var mediaTimer: Timer?
+    private var mediaOwners: [String: MediaPlaybackOwner] = [:]
     private var accessibilityObserver: AXObserver?
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
@@ -120,6 +123,8 @@ final class HistoryRecorder {
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
         }
+        mediaTimer?.invalidate()
+        mediaTimer = nil
         for (center, observer) in presenceObservers {
             center.removeObserver(observer)
         }
@@ -219,6 +224,53 @@ final class HistoryRecorder {
             self?.switchFrontmostApplication(to: app)
         }
         observePresence()
+        observeMediaPlayback()
+    }
+
+    private func observeMediaPlayback() {
+        mediaOwners = MediaPlaybackMonitor.currentOwners()
+        for owner in mediaOwners.values.sorted(by: { $0.bundleIdentifier < $1.bundleIdentifier }) {
+            appendMedia(.mediaPlaybackStarted, owner: owner)
+        }
+        mediaTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) {
+            [weak self] _ in
+            self?.pollMediaPlayback()
+        }
+    }
+
+    private func pollMediaPlayback() {
+        let current = MediaPlaybackMonitor.currentOwners()
+        let changes = MediaPlayback.transitions(previous: mediaOwners, current: current)
+        mediaOwners = current
+        changes.stopped.forEach { appendMedia(.mediaPlaybackStopped, owner: $0) }
+        changes.started.forEach { appendMedia(.mediaPlaybackStarted, owner: $0) }
+    }
+
+    private func appendMedia(_ kind: HistoryEventKind, owner: MediaPlaybackOwner) {
+        guard !stopped, recorderState == .running else {
+            return
+        }
+        sequence += 1
+        let event = HistoryEvent(
+            id: sequence,
+            timestamp: Date(),
+            kind: kind,
+            app: EventStreamApp(
+                name: owner.name,
+                secureInput: false,
+                processIdentifier: nil,
+                bundleIdentifier: owner.bundleIdentifier
+            ),
+            diagnostic: owner.assertionName.map { EventStreamDiagnostic(message: $0) }
+        )
+        let suppressed = policy.shouldSuppress(
+            bundleIdentifier: owner.bundleIdentifier,
+            windowTitle: nil,
+            urlDomain: nil,
+            role: nil,
+            subrole: nil
+        ) != nil
+        try? suppressed ? store.appendSuppressed(event) : store.append(event)
     }
 
     /// Lock, unlock, sleep, and wake bound the time the user can be at the
@@ -261,7 +313,50 @@ final class HistoryRecorder {
         appendWindowChangedIfNeeded(currentSnapshot())
     }
 
+    /// Chromium and Electron build their web accessibility tree only when an
+    /// assistive client asks. `AXManualAccessibility` is the targeted switch;
+    /// Chromium browsers that ignore it fall back to `AXEnhancedUserInterface`.
+    private func enableWebAccessibility(processIdentifier: pid_t) {
+        guard webAccessibilityProcesses.insert(processIdentifier).inserted else {
+            return
+        }
+        let application = AXUIElementCreateApplication(processIdentifier)
+        AXUIElementSetAttributeValue(
+            application,
+            "AXManualAccessibility" as CFString,
+            kCFBooleanTrue
+        )
+        guard let bundleIdentifier = NSRunningApplication(
+            processIdentifier: processIdentifier
+        )?.bundleIdentifier,
+            ObservationPolicy.chromiumBrowserBundleIdentifiers.contains(bundleIdentifier)
+        else {
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            var window: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(
+                application,
+                kAXFocusedWindowAttribute as CFString,
+                &window
+            ) == .success,
+                let window,
+                CFGetTypeID(window) == AXUIElementGetTypeID()
+            else {
+                return
+            }
+            if AXTreeCapture.webAreas(under: window as! AXUIElement).isEmpty {
+                AXUIElementSetAttributeValue(
+                    application,
+                    "AXEnhancedUserInterface" as CFString,
+                    kCFBooleanTrue
+                )
+            }
+        }
+    }
+
     private func installAccessibilityObserver(processIdentifier: pid_t) {
+        enableWebAccessibility(processIdentifier: processIdentifier)
         if let accessibilityObserver {
             CFRunLoopRemoveSource(
                 CFRunLoopGetCurrent(),
@@ -716,7 +811,9 @@ final class HistoryRecorder {
              .systemScreenLocked,
              .systemScreenUnlocked,
              .systemWillSleep,
-             .systemDidWake:
+             .systemDidWake,
+             .mediaPlaybackStarted,
+             .mediaPlaybackStopped:
             return false
         }
     }

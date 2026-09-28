@@ -19,6 +19,11 @@ public enum HistoryEventKind: String, Codable, CaseIterable, Sendable {
     case systemScreenUnlocked = "system.screen_unlocked"
     case systemWillSleep = "system.will_sleep"
     case systemDidWake = "system.did_wake"
+    // Open extension: an app started or stopped holding a display-sleep
+    // assertion (video playback). `app` names the owner, `diagnostic` the
+    // assertion name.
+    case mediaPlaybackStarted = "media.playback_started"
+    case mediaPlaybackStopped = "media.playback_stopped"
 
     /// Lifecycle and presence events are written even when the frontmost app
     /// is suppressed, and never carry an app snapshot of their own.
@@ -424,5 +429,48 @@ public struct SegmentMetadata: Codable, Equatable, Identifiable, Sendable {
         self.endReason = endReason
         self.eventCount = eventCount
         self.suppressedEventCount = suppressedEventCount
+    }
+}
+
+/// An app currently holding a display-sleep assertion, typically for video.
+public struct MediaPlaybackOwner: Hashable, Sendable {
+    public let bundleIdentifier: String
+    public let name: String?
+    public let assertionName: String?
+
+    public init(bundleIdentifier: String, name: String?, assertionName: String?) {
+        self.bundleIdentifier = bundleIdentifier
+        self.name = name
+        self.assertionName = assertionName
+    }
+}
+
+public enum MediaPlayback {
+    public static let displaySleepAssertionTypes: Set<String> = [
+        "PreventUserIdleDisplaySleep",
+        "NoDisplaySleepAssertion",
+    ]
+
+    /// Owners that started and stopped between two polls, keyed by bundle.
+    public static func transitions(
+        previous: [String: MediaPlaybackOwner],
+        current: [String: MediaPlaybackOwner]
+    ) -> (started: [MediaPlaybackOwner], stopped: [MediaPlaybackOwner]) {
+        let started = current.keys.sorted()
+            .filter { previous[$0] == nil }
+            .compactMap { current[$0] }
+        let stopped = previous.keys.sorted()
+            .filter { current[$0] == nil }
+            .compactMap { previous[$0] }
+        return (started, stopped)
+    }
+
+    /// The outermost `.app` bundle path containing an executable, so helper
+    /// processes resolve to the browser that owns them.
+    public static func owningApplicationPath(forExecutable path: String) -> String? {
+        guard let range = path.range(of: ".app/") else {
+            return path.hasSuffix(".app") ? path : nil
+        }
+        return String(path[..<range.upperBound].dropLast())
     }
 }
