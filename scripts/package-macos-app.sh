@@ -49,7 +49,7 @@ cat >"$app/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$app"
+codesign --force --deep --sign "${OPEN_HISTORY_SIGN_IDENTITY:--}" "$app"
 
 rm -rf "$fixture_app"
 mkdir -p "$fixture_app/Contents/MacOS"
