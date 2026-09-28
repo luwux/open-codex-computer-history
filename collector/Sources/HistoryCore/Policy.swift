@@ -203,6 +203,18 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         }
     }
 
+    /// Whether an accessibility element is a browser's address bar. Dia exposes
+    /// its bar as an `AXTextArea` identified `navigationBarAssistantBarTextField`.
+    public static func isBrowserAddressField(role: String?, label: String) -> Bool {
+        guard role == "AXTextField" || role == "AXTextArea" else {
+            return false
+        }
+        let label = label.lowercased()
+        return label.contains("address")
+            || label.contains("search")
+            || label.contains("navigationbar")
+    }
+
     /// Browsers whose windows carry web URLs and private-browsing titles.
     public static let browserBundleIdentifiers: Set<String> = [
         "com.google.Chrome",

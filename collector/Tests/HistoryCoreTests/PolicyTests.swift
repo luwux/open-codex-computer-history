@@ -41,6 +41,21 @@ final class PolicyTests: XCTestCase {
         }
     }
 
+    func testBrowserAddressFieldsIncludeDiaNavigationBar() {
+        XCTAssertTrue(ObservationPolicy.isBrowserAddressField(
+            role: "AXTextField", label: "address and search bar"
+        ))
+        XCTAssertTrue(ObservationPolicy.isBrowserAddressField(
+            role: "AXTextArea", label: "navigationBarAssistantBarTextField"
+        ))
+        XCTAssertFalse(ObservationPolicy.isBrowserAddressField(
+            role: "AXTextArea", label: "message composer"
+        ))
+        XCTAssertFalse(ObservationPolicy.isBrowserAddressField(
+            role: "AXButton", label: "search"
+        ))
+    }
+
     func testLocalizedChromeIncognitoTitleIsSuppressed() {
         let policy = ObservationPolicy()
         XCTAssertEqual(
