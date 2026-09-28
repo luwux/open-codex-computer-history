@@ -174,7 +174,7 @@ enum AccessibilityReader {
                 stringAttribute(element, kAXIdentifierAttribute as CFString),
             ].compactMap { $0 }.joined(separator: " ").lowercased()
             if ObservationPolicy.isBrowserAddressField(role: role, label: label) {
-                if let url = normalizedWebURL(
+                if let url = ObservationPolicy.addressBarURL(
                     stringAttribute(element, kAXValueAttribute as CFString)
                 ) {
                     return url

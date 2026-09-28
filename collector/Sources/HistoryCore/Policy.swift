@@ -215,6 +215,37 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
             || label.contains("navigationbar")
     }
 
+    /// Reads a URL from an address bar value. Full http(s) URLs pass through.
+    /// Browsers that display a condensed form such as
+    /// `example.com / Page title` (Dia) or a bare host yield `https://host`.
+    public static func addressBarURL(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty
+        else {
+            return nil
+        }
+        if let url = URL(string: value),
+           let scheme = url.scheme?.lowercased(),
+           scheme == "http" || scheme == "https",
+           url.host != nil
+        {
+            return url.absoluteString
+        }
+        let host = String(value.split(separator: " ", maxSplits: 1).first ?? "")
+            .lowercased()
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2,
+              labels.allSatisfy({ label in
+                  !label.isEmpty && label.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" }
+              }),
+              labels.last!.allSatisfy(\.isLetter),
+              let url = URL(string: "https://\(host)")
+        else {
+            return nil
+        }
+        return url.absoluteString
+    }
+
     /// Browsers whose windows carry web URLs and private-browsing titles.
     public static let browserBundleIdentifiers: Set<String> = [
         "com.google.Chrome",

@@ -56,6 +56,25 @@ final class PolicyTests: XCTestCase {
         ))
     }
 
+    func testAddressBarURLAcceptsCondensedDiaValues() {
+        XCTAssertEqual(
+            ObservationPolicy.addressBarURL("https://example.com/a?b=1"),
+            "https://example.com/a?b=1"
+        )
+        XCTAssertEqual(
+            ObservationPolicy.addressBarURL("ui.shadcn.com / New Project - shadcn/ui"),
+            "https://ui.shadcn.com"
+        )
+        XCTAssertEqual(
+            ObservationPolicy.addressBarURL("rir-paper-videos-1beb77.pages.dev"),
+            "https://rir-paper-videos-1beb77.pages.dev"
+        )
+        XCTAssertNil(ObservationPolicy.addressBarURL("dia://settings/?search=password"))
+        XCTAssertNil(ObservationPolicy.addressBarURL("setting"))
+        XCTAssertNil(ObservationPolicy.addressBarURL("how to cook rice"))
+        XCTAssertNil(ObservationPolicy.addressBarURL(""))
+    }
+
     func testLocalizedChromeIncognitoTitleIsSuppressed() {
         let policy = ObservationPolicy()
         XCTAssertEqual(
