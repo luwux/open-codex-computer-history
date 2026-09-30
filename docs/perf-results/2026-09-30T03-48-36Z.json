@@ -1,0 +1,395 @@
+{
+  "commit": "a5aedf9",
+  "macOS": "27.0",
+  "machine": "arm64",
+  "results": [
+    {
+      "date": "2026-09-30T03:47:31Z",
+      "iterations": 10,
+      "rows": [
+        {
+          "axCalls": 0,
+          "maxMs": 1005.019291,
+          "medianMs": 1004.842375,
+          "netTargetCpuMs": 0,
+          "netTargetEnergyMJ": 0,
+          "path": "idle 1 s (noise floor)",
+          "recorderCpuMs": 0.0268125,
+          "targetCpuMs": 0.2855333333333333,
+          "targetEnergyMJ": 0.09158809999999999,
+          "targetWakeups": 0.5
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 1.1355,
+          "medianMs": 0.687125,
+          "netTargetCpuMs": 0.4417177800468499,
+          "netTargetEnergyMJ": 0.15566016832346102,
+          "path": "context (keystroke/flush)",
+          "recorderCpuMs": 0.1932625,
+          "targetCpuMs": 0.44192083333333326,
+          "targetEnergyMJ": 0.1557253,
+          "targetWakeups": 0
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 0.958583,
+          "medianMs": 0.683792,
+          "netTargetCpuMs": 0.5130265844016989,
+          "netTargetEnergyMJ": 0.1366081829027828,
+          "path": "context, cold URL cache",
+          "recorderCpuMs": 0.1544875,
+          "targetCpuMs": 0.5132333333333333,
+          "targetEnergyMJ": 0.1366745,
+          "targetWakeups": 0
+        },
+        {
+          "axCalls": 1,
+          "maxMs": 0.131916,
+          "medianMs": 0.091292,
+          "netTargetCpuMs": 0.07760922232562223,
+          "netTargetEnergyMJ": 0.016206929610779783,
+          "path": "selection probe",
+          "recorderCpuMs": 0.020804166666666665,
+          "targetCpuMs": 0.0776375,
+          "targetEnergyMJ": 0.016216,
+          "targetWakeups": 0
+        },
+        {
+          "axCalls": 75,
+          "maxMs": 57.960959,
+          "medianMs": 15.438,
+          "netTargetCpuMs": 16.901945094525466,
+          "netTargetEnergyMJ": 53.10558224621845,
+          "path": "tree capture (window chg)",
+          "recorderCpuMs": 1.6554125,
+          "targetCpuMs": 16.907483333333335,
+          "targetEnergyMJ": 53.1073587,
+          "targetWakeups": 0.2
+        },
+        {
+          "axCalls": 683,
+          "maxMs": 161.75575,
+          "medianMs": 141.105917,
+          "netTargetCpuMs": 136.98315374896487,
+          "netTargetEnergyMJ": 613.201545798642,
+          "path": "tree, no visible/cap/budget",
+          "recorderCpuMs": 9.9270125,
+          "targetCpuMs": 137.02443333333332,
+          "targetEnergyMJ": 613.2147867,
+          "targetWakeups": 1.3
+        },
+        {
+          "axCalls": 76,
+          "maxMs": 13.52,
+          "medianMs": 12.133375,
+          "netTargetCpuMs": 10.417131842234374,
+          "netTargetEnergyMJ": 53.183107592972796,
+          "path": "click (context + tree)",
+          "recorderCpuMs": 1.392125,
+          "targetCpuMs": 10.420629166666668,
+          "targetEnergyMJ": 53.18422940000001,
+          "targetWakeups": 0
+        }
+      ],
+      "target": "dev.opencomputerhistory.fixture.perf"
+    },
+    {
+      "date": "2026-09-30T03:47:44Z",
+      "iterations": 10,
+      "rows": [
+        {
+          "axCalls": 0,
+          "maxMs": 1005.030791,
+          "medianMs": 1004.022084,
+          "netTargetCpuMs": 0,
+          "netTargetEnergyMJ": -9.094947017729283e-14,
+          "path": "idle 1 s (noise floor)",
+          "recorderCpuMs": 0.137775,
+          "targetCpuMs": 1302.2560625,
+          "targetEnergyMJ": 740.7211596,
+          "targetWakeups": 666.1
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 1.050916,
+          "medianMs": 0.546791,
+          "netTargetCpuMs": 0.9137068609936513,
+          "netTargetEnergyMJ": 0.32897099844322336,
+          "path": "context (keystroke/flush)",
+          "recorderCpuMs": 0.27791666666666665,
+          "targetCpuMs": 1.6655458333333335,
+          "targetEnergyMJ": 0.7566158,
+          "targetWakeups": 0.4
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 1.052125,
+          "medianMs": 0.375458,
+          "netTargetCpuMs": 0.2950798522156869,
+          "netTargetEnergyMJ": 0.3735484776355266,
+          "path": "context, cold URL cache",
+          "recorderCpuMs": 0.2598875,
+          "targetCpuMs": 0.8734624999999999,
+          "targetEnergyMJ": 0.7025316,
+          "targetWakeups": 0.2
+        },
+        {
+          "axCalls": 15,
+          "maxMs": 5.623917,
+          "medianMs": 1.821334,
+          "netTargetCpuMs": 1.5561062325725559,
+          "netTargetEnergyMJ": 5.003773666680269,
+          "path": "browser URL search (cold)",
+          "recorderCpuMs": 0.37962916666666663,
+          "targetCpuMs": 4.7118166666666665,
+          "targetEnergyMJ": 6.798736700000001,
+          "targetWakeups": 1.5
+        },
+        {
+          "axCalls": 1,
+          "maxMs": 0.067458,
+          "medianMs": 0.03175,
+          "netTargetCpuMs": -0.02594420914446142,
+          "netTargetEnergyMJ": 0.01707929915471375,
+          "path": "browser URL (cached)",
+          "recorderCpuMs": 0.0302375,
+          "targetCpuMs": 0.0210125,
+          "targetEnergyMJ": 0.0437882,
+          "targetWakeups": 0
+        },
+        {
+          "axCalls": 1,
+          "maxMs": 0.072084,
+          "medianMs": 0.03675,
+          "netTargetCpuMs": 0.22666309122716272,
+          "netTargetEnergyMJ": 0.20310728988812796,
+          "path": "selection probe",
+          "recorderCpuMs": 0.033850000000000005,
+          "targetCpuMs": 0.2787833333333333,
+          "targetEnergyMJ": 0.23275320000000002,
+          "targetWakeups": 0.1
+        },
+        {
+          "axCalls": 254,
+          "maxMs": 32.555125,
+          "medianMs": 15.182875,
+          "netTargetCpuMs": 3.6449343712674134,
+          "netTargetEnergyMJ": 61.06843935403176,
+          "path": "tree capture (window chg)",
+          "recorderCpuMs": 3.7044833333333336,
+          "targetCpuMs": 25.929741666666665,
+          "targetEnergyMJ": 73.744002,
+          "targetWakeups": 10.7
+        },
+        {
+          "axCalls": 251,
+          "maxMs": 15.606,
+          "medianMs": 15.056958,
+          "netTargetCpuMs": 3.392993797432257,
+          "netTargetEnergyMJ": 63.03397028874152,
+          "path": "tree, no visible/cap/budget",
+          "recorderCpuMs": 3.3751333333333333,
+          "targetCpuMs": 22.705824999999997,
+          "targetEnergyMJ": 74.0190777,
+          "targetWakeups": 9.6
+        },
+        {
+          "axCalls": 256,
+          "maxMs": 24.124584,
+          "medianMs": 15.444917,
+          "netTargetCpuMs": 2.798536724997632,
+          "netTargetEnergyMJ": 68.45727413896213,
+          "path": "click (context + tree)",
+          "recorderCpuMs": 3.515066666666667,
+          "targetCpuMs": 24.145737500000003,
+          "targetEnergyMJ": 80.5995277,
+          "targetWakeups": 10.5
+        }
+      ],
+      "target": "company.thebrowser.dia"
+    },
+    {
+      "date": "2026-09-30T03:47:58Z",
+      "iterations": 10,
+      "rows": [
+        {
+          "axCalls": 0,
+          "maxMs": 1005.052583,
+          "medianMs": 1004.354125,
+          "netTargetCpuMs": 0,
+          "netTargetEnergyMJ": 0,
+          "path": "idle 1 s (noise floor)",
+          "recorderCpuMs": 0.049625,
+          "targetCpuMs": 350.7209,
+          "targetEnergyMJ": 334.092616,
+          "targetWakeups": 540.4
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 3.132375,
+          "medianMs": 0.258917,
+          "netTargetCpuMs": 0.25233927455535027,
+          "netTargetEnergyMJ": 1.2439861850293759,
+          "path": "context (keystroke/flush)",
+          "recorderCpuMs": 0.12765416666666668,
+          "targetCpuMs": 0.44052499999999994,
+          "targetEnergyMJ": 1.4232497,
+          "targetWakeups": 0.3
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 1.155208,
+          "medianMs": 0.189666,
+          "netTargetCpuMs": 0.23058708516276544,
+          "netTargetEnergyMJ": 1.05468929076944,
+          "path": "context, cold URL cache",
+          "recorderCpuMs": 0.09245833333333334,
+          "targetCpuMs": 0.33390833333333336,
+          "targetEnergyMJ": 1.1531119,
+          "targetWakeups": 0.3
+        },
+        {
+          "axCalls": 1,
+          "maxMs": 0.639834,
+          "medianMs": 0.052958,
+          "netTargetCpuMs": 0.16164467682176045,
+          "netTargetEnergyMJ": 0.5617863777926452,
+          "path": "selection probe",
+          "recorderCpuMs": 0.035979166666666666,
+          "targetCpuMs": 0.200325,
+          "targetEnergyMJ": 0.5986328000000001,
+          "targetWakeups": 0.2
+        },
+        {
+          "axCalls": 742,
+          "maxMs": 70.729209,
+          "medianMs": 49.793542,
+          "netTargetCpuMs": 30.555484561711864,
+          "netTargetEnergyMJ": 205.73719025705432,
+          "path": "tree capture (window chg)",
+          "recorderCpuMs": 9.775937500000001,
+          "targetCpuMs": 48.78109583333333,
+          "targetEnergyMJ": 223.0986938,
+          "targetWakeups": 37
+        },
+        {
+          "axCalls": 742,
+          "maxMs": 101.894125,
+          "medianMs": 64.824833,
+          "netTargetCpuMs": 43.5840858294179,
+          "netTargetEnergyMJ": 252.87583124279232,
+          "path": "tree, no visible/cap/budget",
+          "recorderCpuMs": 11.027379166666666,
+          "targetCpuMs": 66.24079166666667,
+          "targetEnergyMJ": 274.4583435,
+          "targetWakeups": 50.4
+        },
+        {
+          "axCalls": 743,
+          "maxMs": 60.324916,
+          "medianMs": 42.835792,
+          "netTargetCpuMs": 34.36607418894645,
+          "netTargetEnergyMJ": 213.6001349678429,
+          "path": "click (context + tree)",
+          "recorderCpuMs": 9.836475,
+          "targetCpuMs": 50.3977125,
+          "targetEnergyMJ": 228.8716856,
+          "targetWakeups": 35.9
+        }
+      ],
+      "target": "com.anthropic.claudefordesktop"
+    },
+    {
+      "date": "2026-09-30T03:48:36Z",
+      "iterations": 10,
+      "rows": [
+        {
+          "axCalls": 0,
+          "maxMs": 1005.015208,
+          "medianMs": 1004.584542,
+          "netTargetCpuMs": 0,
+          "netTargetEnergyMJ": 0,
+          "path": "idle 1 s (noise floor)",
+          "recorderCpuMs": 0.020841666666666668,
+          "targetCpuMs": 0.1044875,
+          "targetEnergyMJ": 0.0787928,
+          "targetWakeups": 0.3
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 0.915833,
+          "medianMs": 0.612708,
+          "netTargetCpuMs": 0.3483494037235121,
+          "netTargetEnergyMJ": 0.11224071983687944,
+          "path": "context (keystroke/flush)",
+          "recorderCpuMs": 0.17369166666666666,
+          "targetCpuMs": 0.3484125,
+          "targetEnergyMJ": 0.11228830000000001,
+          "targetWakeups": 0
+        },
+        {
+          "axCalls": 3,
+          "maxMs": 0.78225,
+          "medianMs": 0.4665,
+          "netTargetCpuMs": 0.26999330398593324,
+          "netTargetEnergyMJ": 0.10671853026887915,
+          "path": "context, cold URL cache",
+          "recorderCpuMs": 0.13867916666666666,
+          "targetCpuMs": 0.2700416666666666,
+          "targetEnergyMJ": 0.106755,
+          "targetWakeups": 0
+        },
+        {
+          "axCalls": 1,
+          "maxMs": 0.179542,
+          "medianMs": 0.089584,
+          "netTargetCpuMs": 0.07917809865984024,
+          "netTargetEnergyMJ": 0.02049571055949334,
+          "path": "selection probe",
+          "recorderCpuMs": 0.014454166666666666,
+          "targetCpuMs": 0.0791875,
+          "targetEnergyMJ": 0.020502799999999998,
+          "targetWakeups": 0
+        },
+        {
+          "axCalls": 280,
+          "maxMs": 110.816834,
+          "medianMs": 76.999583,
+          "netTargetCpuMs": 58.03047962470582,
+          "netTargetEnergyMJ": 25.501043967505883,
+          "path": "tree capture (window chg)",
+          "recorderCpuMs": 5.786275,
+          "targetCpuMs": 58.0389125,
+          "targetEnergyMJ": 25.507403099999998,
+          "targetWakeups": 0.4
+        },
+        {
+          "axCalls": 611,
+          "maxMs": 2782.18625,
+          "medianMs": 2514.702291,
+          "netTargetCpuMs": 2012.0599836791073,
+          "netTargetEnergyMJ": 811.5603080937505,
+          "path": "tree, no visible/cap/budget",
+          "recorderCpuMs": 29.7354,
+          "targetCpuMs": 2012.3192708333331,
+          "targetEnergyMJ": 811.7558335,
+          "targetWakeups": 2.9
+        },
+        {
+          "axCalls": 281,
+          "maxMs": 96.901417,
+          "medianMs": 83.020667,
+          "netTargetCpuMs": 59.3067413506987,
+          "netTargetEnergyMJ": 27.399975694008845,
+          "path": "click (context + tree)",
+          "recorderCpuMs": 6.953645833333333,
+          "targetCpuMs": 59.31515416666666,
+          "targetEnergyMJ": 27.4063197,
+          "targetWakeups": 0.3
+        }
+      ],
+      "target": "com.apple.mail"
+    }
+  ]
+}
