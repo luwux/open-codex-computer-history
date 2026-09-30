@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
 import HistoryCore
@@ -75,6 +76,11 @@ final class HistoryRecorder {
     private var captureThrottle: AXCaptureThrottle
     private let urlResolver = BrowserURLResolver()
     private let browserScripting: BrowserScriptingResolver
+    private let pageTextReader = CDPPageTextReader()
+    private var pageTextTracker: PageTextDwellTracker
+    private var pageTextSnapshot: AccessibilitySnapshot?
+    private var pageTextTask: DispatchWorkItem?
+    private var pageTextInFlight = false
     private var controlWatcher: DispatchSourceFileSystemObject?
     private var controlCheckTask: DispatchWorkItem?
     private var controlFallbackTimer: Timer?
@@ -92,6 +98,10 @@ final class HistoryRecorder {
         ].flatMap(Double.init) ?? 600
         self.policy = policy
         self.browserScripting = BrowserScriptingResolver(settings: policy.browserScripting)
+        self.pageTextTracker = PageTextDwellTracker(
+            dwellSeconds: policy.pageText.effectiveDwellSeconds,
+            recaptureSeconds: policy.pageText.effectiveRecaptureSeconds
+        )
         self.captureThrottle = AXCaptureThrottle(
             minimumInterval: policy.axCapture.minimumTreeIntervalSeconds
         )
@@ -149,6 +159,7 @@ final class HistoryRecorder {
         axDebounceTasks.removeAll()
         windowRetryTask?.cancel()
         windowRetryTask = nil
+        cancelPageText()
         try? append(
             kind: .sessionEnded,
             snapshot: recorderState == .running ? contextSnapshot() : nil
@@ -587,6 +598,9 @@ final class HistoryRecorder {
         }
         flushTextBuffer()
         flushTerminalBuffer()
+        if kind == .systemScreenLocked || kind == .systemWillSleep {
+            cancelPageText()
+        }
         try? append(kind: kind, snapshot: nil)
     }
 
@@ -721,6 +735,7 @@ final class HistoryRecorder {
             lastWindowElement = windowElement
         }
         applyURLCache(&snapshot)
+        observePageText(snapshot)
         return snapshot
     }
 
@@ -785,6 +800,117 @@ final class HistoryRecorder {
             subrole: snapshot.element?.subrole,
             privateWindow: snapshot.isPrivateWindow
         )
+    }
+
+    // MARK: - Page text
+
+    /// Tracks the frontmost page for the opt-in `pageText` reader. Costs no
+    /// requests: it only looks at the context this event already read.
+    private func observePageText(_ snapshot: AccessibilitySnapshot) {
+        guard policy.pageText.isEnabled else {
+            return
+        }
+        var candidate: PageTextDwellTracker.Candidate?
+        if let bundleIdentifier = snapshot.app.bundleIdentifier,
+           policy.pageText.applies(to: bundleIdentifier),
+           let urlKey = WebURL.matchKey(snapshot.window?.url)
+        {
+            candidate = PageTextDwellTracker.Candidate(
+                bundleIdentifier: bundleIdentifier,
+                windowKey: snapshot.windowKey ?? "pid:\(snapshot.processIdentifier)",
+                urlKey: urlKey
+            )
+        }
+        pageTextSnapshot = candidate == nil ? nil : snapshot
+        let now = Date()
+        guard candidate != pageTextTracker.current else {
+            return
+        }
+        pageTextTask?.cancel()
+        pageTextTask = nil
+        guard let dueAt = pageTextTracker.observe(candidate, now: now) else {
+            return
+        }
+        let task = DispatchWorkItem { [weak self] in
+            self?.pageTextTask = nil
+            self?.readPageTextIfDue()
+        }
+        pageTextTask = task
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + max(dueAt.timeIntervalSince(now), 0),
+            execute: task
+        )
+    }
+
+    private func readPageTextIfDue() {
+        let now = Date()
+        guard !stopped, recorderState == .running, !pageTextInFlight,
+              let candidate = pageTextTracker.due(now: now),
+              let snapshot = pageTextSnapshot,
+              snapshot.processIdentifier == currentProcessIdentifier,
+              let pageURL = snapshot.window?.url
+        else {
+            return
+        }
+        let refusal = PageTextEligibility.refusal(
+            settings: policy.pageText,
+            captureText: policy.captureText,
+            bundleIdentifier: snapshot.app.bundleIdentifier,
+            url: pageURL,
+            suppressionReason: suppressionReason(snapshot),
+            secureInput: snapshot.app.secureInput,
+            secureEventInput: IsSecureEventInputEnabled()
+        )
+        guard refusal == nil else {
+            return
+        }
+        pageTextTracker.recordAttempt(candidate.urlKey, now: now)
+        pageTextInFlight = true
+        pageTextReader.read(
+            pageURL: pageURL,
+            title: snapshot.window?.title,
+            settings: policy.pageText
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else {
+                    return
+                }
+                self.pageTextInFlight = false
+                guard case let .success(page) = result,
+                      WebURL.matchKey(page.url) == candidate.urlKey
+                else {
+                    return
+                }
+                self.appendPageText(page, snapshot: snapshot)
+            }
+        }
+    }
+
+    private func appendPageText(_ page: PageTextResult, snapshot: AccessibilitySnapshot) {
+        guard !stopped, recorderState == .running, !page.text.isEmpty else {
+            return
+        }
+        sequence += 1
+        let shown = page.text.count
+        let event = HistoryEvent(
+            id: sequence,
+            timestamp: Date(),
+            kind: .webPageContent,
+            app: snapshot.app,
+            window: snapshot.window,
+            ax: EventStreamAXTree(mode: .fullTree, text: page.text),
+            diagnostic: EventStreamDiagnostic(
+                message: "cdp \(page.element ?? "body") \(shown)/\(max(page.length, shown))"
+            )
+        )
+        try? store.append(event)
+    }
+
+    private func cancelPageText() {
+        pageTextTask?.cancel()
+        pageTextTask = nil
+        pageTextSnapshot = nil
+        _ = pageTextTracker.observe(nil, now: Date())
     }
 
     // MARK: - Writing
@@ -1159,6 +1285,7 @@ final class HistoryRecorder {
         mouseDown = nil
         focusContext = nil
         lastWindowElement = nil
+        cancelPageText()
     }
 
     private func resumeObservation() {

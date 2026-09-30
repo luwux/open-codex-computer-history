@@ -48,6 +48,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
     public var axCapture: AXCaptureSettings
     public var webAccessibility: WebAccessibilitySettings
     public var browserScripting: BrowserScriptingSettings
+    public var pageText: PageTextSettings
 
     public init(
         observation: ObservationSettings = ObservationSettings(),
@@ -55,7 +56,8 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         captureText: Bool = true,
         axCapture: AXCaptureSettings = AXCaptureSettings(),
         webAccessibility: WebAccessibilitySettings = WebAccessibilitySettings(),
-        browserScripting: BrowserScriptingSettings = BrowserScriptingSettings()
+        browserScripting: BrowserScriptingSettings = BrowserScriptingSettings(),
+        pageText: PageTextSettings = PageTextSettings()
     ) {
         self.observation = observation
         self.showMenuBarIcon = showMenuBarIcon
@@ -63,6 +65,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         self.axCapture = axCapture
         self.webAccessibility = webAccessibility
         self.browserScripting = browserScripting
+        self.pageText = pageText
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -72,6 +75,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         case axCapture
         case webAccessibility
         case browserScripting
+        case pageText
     }
 
     public init(from decoder: Decoder) throws {
@@ -100,6 +104,10 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
             BrowserScriptingSettings.self,
             forKey: .browserScripting
         ) ?? BrowserScriptingSettings()
+        pageText = try container.decodeIfPresent(
+            PageTextSettings.self,
+            forKey: .pageText
+        ) ?? PageTextSettings()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -110,6 +118,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         try container.encode(axCapture, forKey: .axCapture)
         try container.encode(webAccessibility, forKey: .webAccessibility)
         try container.encode(browserScripting, forKey: .browserScripting)
+        try container.encode(pageText, forKey: .pageText)
     }
 
     public func allowsApplication(_ bundleIdentifier: String) -> Bool {

@@ -24,6 +24,11 @@ public enum HistoryEventKind: String, Codable, CaseIterable, Sendable {
     // assertion name.
     case mediaPlaybackStarted = "media.playback_started"
     case mediaPlaybackStopped = "media.playback_stopped"
+    // Open extension: text of a web page the user dwelled on, read once per
+    // URL from the browser's DevTools protocol (opt-in `pageText`). `window`
+    // carries the page title and URL, `ax.fullTree` the text, `diagnostic`
+    // the source (for example `cdp article 8000/23451`).
+    case webPageContent = "web.page_content"
 
     /// Lifecycle and presence events are written even when the frontmost app
     /// is suppressed, and never carry an app snapshot of their own.
@@ -47,7 +52,8 @@ public enum HistoryEventKind: String, Codable, CaseIterable, Sendable {
             true
         case .sessionStarted, .sessionEnded, .keyboardTextInput, .selectionChanged,
              .systemScreenLocked, .systemScreenUnlocked, .systemWillSleep,
-             .systemDidWake, .mediaPlaybackStarted, .mediaPlaybackStopped:
+             .systemDidWake, .mediaPlaybackStarted, .mediaPlaybackStopped,
+             .webPageContent:
             false
         }
     }

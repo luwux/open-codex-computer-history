@@ -24,6 +24,8 @@ case "bench":
     runBench(arguments: Array(arguments.dropFirst()))
 case "browser-tab":
     printBrowserTab(arguments: Array(arguments.dropFirst()), homeURL: homeURL)
+case "page-text":
+    printPageText(arguments: Array(arguments.dropFirst()), homeURL: homeURL)
 case "resume":
     writeControlState(.running, homeURL: homeURL)
 default:
@@ -270,6 +272,89 @@ func printBrowserTab(arguments: [String], homeURL: URL) {
     }
 }
 
+/// Reads the active tab's text of a browser listed in `pageText` the way the
+/// recorder does (Apple Events for the URL, one CDP `Runtime.evaluate`),
+/// without the dwell, dedupe, or writing an event. `--port` and `--max`
+/// override the configuration for this check.
+func printPageText(arguments: [String], homeURL: URL) {
+    let policy = loadPolicy(homeURL: homeURL)
+    var settings = policy.pageText
+    settings.source = .cdp
+    if let port = optionValue("--port", in: arguments).flatMap(Int.init) {
+        settings.port = port
+    }
+    if let maximum = optionValue("--max", in: arguments).flatMap(Int.init) {
+        settings.maxCharacters = maximum
+    }
+    let bundleIdentifier = arguments.first(where: { !$0.hasPrefix("--") && Int($0) == nil })
+        ?? settings.bundleIdentifiers.first
+    guard let bundleIdentifier,
+          let application = NSRunningApplication.runningApplications(
+              withBundleIdentifier: bundleIdentifier
+          ).first,
+          let browser = policy.browserScripting.browser(for: bundleIdentifier)
+    else {
+        fputs("Usage: open-history page-text [BUNDLE-ID] [--port N] [--max N]\n" +
+            "The browser must be running and scriptable.\n", stderr)
+        exit(2)
+    }
+    if !settings.bundleIdentifiers.contains(bundleIdentifier) {
+        settings.bundleIdentifiers.append(bundleIdentifier)
+    }
+    let tab = BrowserAppleEvents.activeTab(
+        processIdentifier: application.processIdentifier,
+        browser: browser,
+        timeout: 2
+    ).tab
+    guard let tab, let pageURL = tab.url else {
+        fputs("Could not read the active tab's URL (Automation permission?).\n", stderr)
+        exit(1)
+    }
+    let refusal = PageTextEligibility.refusal(
+        settings: settings,
+        captureText: policy.captureText,
+        bundleIdentifier: bundleIdentifier,
+        url: pageURL,
+        suppressionReason: policy.shouldSuppress(
+            bundleIdentifier: bundleIdentifier,
+            windowTitle: tab.title,
+            urlDomain: ObservationPolicy.normalizedDomain(pageURL),
+            role: nil,
+            subrole: nil,
+            privateWindow: tab.isPrivate
+        ),
+        secureInput: false,
+        secureEventInput: false
+    )
+    if let refusal {
+        print("{\"refused\": \"\(refusal)\"}")
+        return
+    }
+    let start = DispatchTime.now().uptimeNanoseconds
+    let semaphore = DispatchSemaphore(value: 0)
+    var output: [String: Any] = ["url": pageURL]
+    CDPPageTextReader().read(pageURL: pageURL, title: tab.title, settings: settings) { result in
+        output["milliseconds"] = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
+        switch result {
+        case let .success(page):
+            output["element"] = page.element as Any
+            output["length"] = page.length
+            output["characters"] = page.text.count
+            output["preview"] = String(page.text.prefix(200))
+        case let .failure(error):
+            output["error"] = "\(error)"
+        }
+        semaphore.signal()
+    }
+    semaphore.wait()
+    if let data = try? JSONSerialization.data(
+        withJSONObject: output,
+        options: [.prettyPrinted, .sortedKeys]
+    ), let text = String(data: data, encoding: .utf8) {
+        print(text)
+    }
+}
+
 func writeControlState(_ state: RecorderState, homeURL: URL) {
     do {
         try RuntimeControlStore(homeURL: homeURL).writeControl(state)
@@ -328,6 +413,7 @@ func printUsage() {
       open-history permissions [--no-prompt]
       open-history status
       open-history browser-tab [BUNDLE-ID] [--no-prompt]
+      open-history page-text [BUNDLE-ID] [--port N] [--max N]
       open-history pause [--for 30m|1h|tomorrow]
       open-history resume
 
