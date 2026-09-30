@@ -106,7 +106,7 @@ enum AccessibilityReader {
         let windowElement = application.element(kAXFocusedWindowAttribute as CFString)
         var focusedElement = point.flatMap {
             elementAtPosition(appElement, point: $0)
-        } ?? application.element(kAXFocusedUIElementAttribute as CFString)
+        } ?? notApplication(application.element(kAXFocusedUIElementAttribute as CFString), appElement)
 
         let window = AXAttributeValues(windowElement, windowAttributes)
         var focused = AXAttributeValues(focusedElement, focusedAttributes)
@@ -114,9 +114,10 @@ enum AccessibilityReader {
             // Web views replace the focused node while re-rendering, so the
             // element can be missing or already invalid; ask once more.
             if let value = axCopyAttribute(appElement, kAXFocusedUIElementAttribute as CFString),
-               CFGetTypeID(value) == AXUIElementGetTypeID()
+               CFGetTypeID(value) == AXUIElementGetTypeID(),
+               let element = notApplication((value as! AXUIElement), appElement)
             {
-                focusedElement = (value as! AXUIElement)
+                focusedElement = element
                 focused = AXAttributeValues(focusedElement, focusedAttributes)
             }
         }
@@ -275,6 +276,9 @@ enum AccessibilityReader {
             .range(kAXSelectedTextRangeAttribute as CFString)
     }
 
+    /// The element under `point`, or `nil` when there is none or the hit test
+    /// answers with the application element itself (a point outside the
+    /// app's windows).
     static func elementAtPosition(
         _ application: AXUIElement,
         point: CGPoint
@@ -287,6 +291,21 @@ enum AccessibilityReader {
             Float(point.y),
             &element
         ) == .success else {
+            return nil
+        }
+        return notApplication(element, application)
+    }
+
+    /// Filters out the application element. Chromium and Electron switch on
+    /// their web accessibility mode for the rest of the process's life when
+    /// the application element's `AXRole` is read, and every element read
+    /// here gets its role read; nothing recorded needs the application's own
+    /// attributes beyond the focused window and element.
+    private static func notApplication(
+        _ element: AXUIElement?,
+        _ application: AXUIElement
+    ) -> AXUIElement? {
+        guard let element, !CFEqual(element, application) else {
             return nil
         }
         return element
