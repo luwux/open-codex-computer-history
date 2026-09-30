@@ -109,7 +109,12 @@ final class HistoryRecorder {
 
     func start() throws {
         configureAXMessagingTimeout(policy.axCapture)
-        SegmentStore.prune(homeURL: store.homeURL, olderThan: 48 * 60 * 60)
+        if policy.retentionHours > 0 {
+            SegmentStore.prune(
+                homeURL: store.homeURL,
+                olderThan: policy.retentionHours * 60 * 60
+            )
+        }
         if runtimeControl.readControl()?.state == .paused {
             recorderState = .paused
         }

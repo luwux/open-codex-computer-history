@@ -114,4 +114,13 @@ final class PolicyTests: XCTestCase {
         XCTAssertTrue(policy.allowsDomain("docs.example.com"))
         XCTAssertFalse(policy.allowsDomain("example.org"))
     }
+
+    func testRetentionDefaultsToTwoDaysAndIsConfigurable() throws {
+        XCTAssertEqual(ObservationPolicy().retentionHours, 48)
+        let decoded = try JSONDecoder().decode(
+            ObservationPolicy.self,
+            from: Data(#"{"retentionHours": 0}"#.utf8)
+        )
+        XCTAssertEqual(decoded.retentionHours, 0)
+    }
 }

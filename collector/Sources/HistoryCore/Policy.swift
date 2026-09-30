@@ -49,6 +49,9 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
     public var webAccessibility: WebAccessibilitySettings
     public var browserScripting: BrowserScriptingSettings
     public var pageText: PageTextSettings
+    /// Hours of raw segments kept; segments older than this are deleted when
+    /// the recorder starts. Zero or less keeps everything.
+    public var retentionHours: Double = 48
 
     public init(
         observation: ObservationSettings = ObservationSettings(),
@@ -76,6 +79,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         case webAccessibility
         case browserScripting
         case pageText
+        case retentionHours
     }
 
     public init(from decoder: Decoder) throws {
@@ -108,6 +112,10 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
             PageTextSettings.self,
             forKey: .pageText
         ) ?? PageTextSettings()
+        retentionHours = try container.decodeIfPresent(
+            Double.self,
+            forKey: .retentionHours
+        ) ?? 48
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -119,6 +127,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         try container.encode(webAccessibility, forKey: .webAccessibility)
         try container.encode(browserScripting, forKey: .browserScripting)
         try container.encode(pageText, forKey: .pageText)
+        try container.encode(retentionHours, forKey: .retentionHours)
     }
 
     public func allowsApplication(_ bundleIdentifier: String) -> Bool {
