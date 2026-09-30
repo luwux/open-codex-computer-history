@@ -109,19 +109,51 @@ node) the unbounded traversal still costs Mail 2 s of CPU, so the visible-rows
 rule is what matters. All four limits are overridable under `axCapture` in
 `config.json`.
 
+## Web pages without accessibility mode
+
+The recorder used to set `AXManualAccessibility` on every app it observed
+(and `AXEnhancedUserInterface` on Chromium browsers without a web area) and
+never clear it. Chromium and Electron then keep a full web AX tree and
+serialize every DOM change to it for the rest of the process's life; nothing
+turns it off automatically. Controlled measurements
+([perf/chromium-ax-mode.md](perf/chromium-ax-mode.md)): **+51 mW (+132 %)**
+energy in a Chrome tab that keeps updating, about **+21 mW** in the Claude
+desktop app's renderer and main process. Reading `AXRole` of the application
+element latches a cheaper basic mode just as permanently.
+
+Now:
+
+- Web accessibility mode is **off** by default. `"webAccessibility":
+  "manual"` restores the old behavior with `AXManualAccessibility` only, and
+  clears it on pause and stop. `bench` and `scripts/perf-bench.sh` measure
+  without it unless given `--web-accessibility`.
+- The context read and click hit test never read attributes of the
+  application element (they drop it if returned as the target).
+- Browser URL and title come from the browser's scripting dictionary as raw
+  Apple Events (one per property, per window or title change, cached
+  otherwise; Dia answered URL + title in 13–38 ms). The accessibility URL
+  lookup remains the fallback. `bench --apple-events` measures the path.
+- Page text is opt-in through the DevTools protocol, one
+  `Runtime.evaluate` per URL after a dwell. The reader connects to the one
+  page it reads and disconnects right after the reply: a DevTools client that
+  stays attached and enables focus emulation keeps every background tab
+  "visible", so they keep animating and repainting (observed at about
+  700 mW idle in Dia with another tool attached). It never calls `Emulation.*`
+  or any other method (`CDPPageText.methods`, checked by a unit test). Dia
+  answered the list + evaluate in 18 ms on a small page.
+
+What is lost with the default: Chromium/Electron web content no longer
+appears in `ax` trees unless the app exposes it anyway (for example because
+another assistive client switched the mode on). Page text replaces it for
+browsers where it is enabled; Electron apps without scripting are recorded
+by window, focus, and native tree only.
+
 ## Remaining ideas
 
-- **Chromium/Electron accessibility mode.** The recorder sets
-  `AXManualAccessibility` on every Chromium/Electron app it sees and never
-  clears it, so those apps keep maintaining a full AX tree (renderer → browser
-  serialization on every DOM change, e.g. streaming chat output) even in the
-  background. A quick A/B on Claude (50 processes, noisy) showed 502–536 ms/s
-  with it off vs 538–632 ms/s on: suggestive, not conclusive. Clearing it on
-  deactivation would save that but can break other assistive clients, and
-  re-enabling costs a tree rebuild per activation. Worth a controlled test.
-- **Claude trees** still take ~740 requests: the web area is deeply nested
-  generic groups. Lower web depth/traversal limits or skipping attribute-free
-  subtrees would cut it, at some loss of content.
+- **Claude trees** took ~740 requests with web accessibility on: the web
+  area is deeply nested generic groups. With the mode off by default this
+  only matters under `"webAccessibility": "manual"`; lower web
+  depth/traversal limits would cut it.
 - **Large values.** `AXValue` of big text areas (editors, terminal buffers) is
   transferred whole and truncated to 500 characters afterwards;
   `AXNumberOfCharacters` + `AXStringForRange` would bound it.

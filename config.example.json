@@ -15,5 +15,14 @@
     ]
   },
   "showMenuBarIcon": true,
-  "captureText": true
+  "captureText": true,
+  "browserScripting": {
+    "enabled": true
+  },
+  "pageText": {
+    "source": "off",
+    "port": 9222,
+    "bundleIdentifiers": []
+  },
+  "webAccessibility": "off"
 }

@@ -131,6 +131,21 @@ Verify:
 collector/.build/debug/open-history status
 ```
 
+Browser page URLs and titles are read through each browser's scripting
+dictionary, which needs **Automation** permission per browser. macOS asks the
+first time a supported browser is frontmost while recording (the app bundle
+declares `NSAppleEventsUsageDescription`); the recorder asks at most once per
+browser per run. If you decline, URLs fall back to the accessibility lookup
+and you are not asked again; allow it later under System Settings > Privacy &
+Security > Automation. To grant or check it from a terminal:
+
+```bash
+collector/.build/debug/open-history browser-tab [bundle-id]
+```
+
+If you sign the app with the hardened runtime, also add the
+`com.apple.security.automation.apple-events` entitlement.
+
 ## Record
 
 Normal text capture matches the official default:
@@ -203,6 +218,66 @@ overrides the defaults:
   }
 }
 ```
+
+### Web pages: captured by default and opt-in
+
+Chromium and Electron apps build a web accessibility tree only while an
+assistive client asks for it, and keep paying for it on every page change
+until they quit: measured about +51 mW (+130 %) in a busy Chrome tab and
+about +21 mW in the Claude desktop app
+([docs/perf/chromium-ax-mode.md](docs/perf/chromium-ax-mode.md)). The
+recorder therefore never switches that mode on by default and never reads
+attributes of an app's application element.
+
+| Source | Default | What it records | Cost / permission |
+| --- | --- | --- | --- |
+| Window title, focused element, native AX tree | on | as before; Chromium/Electron pages contribute only what the app already exposes | Accessibility |
+| Browser URL and tab title (Apple Events) | on (`browserScripting`) | page URL and title for Chrome, Chromium, Brave, Edge, Vivaldi, Dia, Arc, Safari; incognito windows (window `mode`) are suppressed | one Apple Event per property on window or title change (Dia: 13–38 ms for URL and title); Automation per browser |
+| Browser URL (accessibility fallback) | on | address bar or web-area URL when scripting is unavailable or denied | Accessibility |
+| Page text (Chrome DevTools Protocol) | **off** (`pageText`) | `web.page_content`: main-content text of a page you stayed on | one read per URL; the browser must run with `--remote-debugging-port` |
+| Web accessibility mode | **off** (`webAccessibility`) | full web AX trees in Chromium/Electron apps | the energy cost above |
+
+Electron apps without a scripting dictionary (for example chat apps) are
+recorded like any other app: window, focus, and the native tree.
+
+```json
+"browserScripting": {
+  "enabled": true,
+  "timeoutMilliseconds": 500,
+  "refreshSeconds": 30,
+  "excludedBundleIdentifiers": []
+},
+"pageText": {
+  "source": "off",
+  "port": 9222,
+  "bundleIdentifiers": [],
+  "dwellSeconds": 5,
+  "maxCharacters": 8000,
+  "recaptureMinutes": 30,
+  "timeoutMilliseconds": 2000
+},
+"webAccessibility": "off"
+```
+
+- `browserScripting` reads `URL`, `title` (and `mode` where the dictionary
+  has it) of the active tab of the front window, cached per window and title
+  and re-read after `refreshSeconds`; never per keystroke.
+- `pageText` with `"source": "cdp"` reads a page once its URL has been
+  unchanged for `dwellSeconds` and was not read in the last
+  `recaptureMinutes`: it lists `http://127.0.0.1:<port>/json/list`, connects
+  to the one page target with that URL, sends a single read-only
+  `Runtime.evaluate` (text of `article`, `main`, or `[role=main]`, else
+  `body`, truncated to `maxCharacters`), and disconnects. `bundleIdentifiers`
+  must name the browser you started with `--remote-debugging-port=<port>`;
+  empty reads nothing. Private windows, excluded apps and domains, secure
+  input, and `"captureText": false` are never read. Note that a remote
+  debugging port lets any local process control that browser; enabling it is
+  your decision. Check the setup with
+  `open-history page-text [bundle-id]`.
+- `webAccessibility` is `"off"` or `"manual"` (or
+  `{"mode": "manual", "bundleIdentifiers": [...]}` to limit it). Manual sets
+  `AXManualAccessibility` (never `AXEnhancedUserInterface`) on activation and
+  clears it when recording pauses or stops.
 
 `open-history bench <bundle-id> [iterations]` reports what each recording path
 costs a running app: accessibility requests, and CPU time, energy, and wakeups

@@ -1,5 +1,12 @@
 # Chromium / Electron accessibility mode: cost, toggling, and alternatives
 
+> Status: recommendations 1, 2 and 4 are implemented (web accessibility mode
+> off by default, URL/title via Apple Events, opt-in CDP page text, no
+> attribute reads of the application element); see
+> [../performance.md](../performance.md#web-pages-without-accessibility-mode).
+> Recommendation 3 (an AX burst for Claude desktop) is not: Electron apps
+> without scripting are recorded like any other app.
+
 Measured 2026-09-29 on an Apple M5 Max running macOS 27.0. The apps were Dia
 1.50.1 (ArcCore / Chromium 154.0.8037.58), Claude desktop 2.9939.4 (Electron
 44.4.3), and a separate throwaway Google Chrome 154.0.8037.58 instance with a

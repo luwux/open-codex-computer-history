@@ -246,10 +246,43 @@ media.playback_stopped
 
 Idle time is not recorded as an event; it is the gap between events.
 
-AX trees in this implementation render web areas first (with their `url`),
-skip attribute-free structural containers, and request web accessibility from
-Chromium and Electron apps (`AXManualAccessibility`, falling back to
-`AXEnhancedUserInterface` for Chromium browsers). Tables, outlines, lists, and
+One more extension carries the text of a web page the user stayed on. It is
+written only when the opt-in `pageText` setting is enabled for the browser,
+at most once per URL per `recaptureMinutes`, and never for private windows,
+suppressed apps or domains, or while secure input is active:
+
+```text
+web.page_content
+```
+
+```json
+{
+  "id": 42,
+  "timestamp": "2026-09-29T21:00:05Z",
+  "kind": "web.page_content",
+  "app": { "name": "Browser", "bundleIdentifier": "com.example.browser" },
+  "window": { "title": "Page title", "url": "https://example.com/article" },
+  "ax": { "mode": "fullTree", "text": "Heading\n\nFirst paragraph ..." },
+  "diagnostic": { "message": "cdp article 8000/23451" }
+}
+```
+
+`window` is the page's title and URL as recorded for the window; `ax.text` is
+the visible text (`innerText`) of the page's `article`, `main`, or
+`[role=main]` element (the first with at least 200 characters), else of
+`body`, with blank-line runs collapsed and truncated to `maxCharacters`;
+`ax.mode` is always `fullTree` and the event never takes part in AX tree
+diffs. `diagnostic.message` is `<source> <element> <recorded>/<total>`
+characters. Consumers that hide text (MCP queries without `includeText`)
+drop `ax` as for any other event.
+
+AX trees in this implementation render web areas first (with their `url`)
+and skip attribute-free structural containers. They do not request web
+accessibility from Chromium and Electron apps unless `webAccessibility` is
+`manual` (then `AXManualAccessibility` only), so by default web content
+appears only when the app already exposes it. Browser window URLs come from
+the browser's scripting dictionary when available, otherwise from
+accessibility. Tables, outlines, lists, and
 grids render only their visible rows or children. To bound the cost to the
 observed app, a window's tree is captured at most every two seconds while its
 title and URL are unchanged; events inside that interval omit `ax`, and the
