@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 @testable import HistoryCore
 
@@ -58,5 +59,30 @@ final class AXCaptureSettingsTests: XCTestCase {
         XCTAssertTrue(throttle.shouldCapture(windowKey: "w2", context: "a", now: soon))
         XCTAssertTrue(throttle.shouldCapture(windowKey: "w1", context: "a", now: soon, force: true))
         XCTAssertTrue(throttle.shouldCapture(windowKey: nil, context: "a", now: soon))
+    }
+}
+
+final class RecorderHotPathTests: XCTestCase {
+    func testTypingSelectionAndBoundariesNeverCarryTrees() {
+        for kind: HistoryEventKind in [
+            .keyboardTextInput, .selectionChanged, .sessionStarted, .sessionEnded,
+            .systemScreenLocked, .systemDidWake, .mediaPlaybackStarted,
+        ] {
+            XCTAssertFalse(kind.carriesAXTree, kind.rawValue)
+        }
+        for kind: HistoryEventKind in [.windowChanged, .mouseClick, .keyboardSubmit] {
+            XCTAssertTrue(kind.carriesAXTree, kind.rawValue)
+        }
+    }
+
+    func testEventTapExcludesHighRateEvents() {
+        let mask = RecorderEventTap.mask
+        for type: CGEventType in [
+            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+            .flagsChanged, .scrollWheel, .keyUp,
+        ] {
+            XCTAssertEqual(mask & (CGEventMask(1) << type.rawValue), 0, "\(type.rawValue)")
+        }
+        XCTAssertNotEqual(mask & (CGEventMask(1) << CGEventType.keyDown.rawValue), 0)
     }
 }

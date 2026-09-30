@@ -36,6 +36,21 @@ public enum HistoryEventKind: String, Codable, CaseIterable, Sendable {
             false
         }
     }
+
+    /// Whether events of this kind carry an accessibility tree (`ax`). Only
+    /// these kinds may pay for a tree capture; typing, selection, and
+    /// boundaries read at most the cheap window and focus context.
+    public var carriesAXTree: Bool {
+        switch self {
+        case .windowChanged, .mouseClick, .mouseContextMenu, .mouseDrag,
+             .keyboardSubmit, .keyboardShortcut, .terminalValueChanged, .debugError:
+            true
+        case .sessionStarted, .sessionEnded, .keyboardTextInput, .selectionChanged,
+             .systemScreenLocked, .systemScreenUnlocked, .systemWillSleep,
+             .systemDidWake, .mediaPlaybackStarted, .mediaPlaybackStopped:
+            false
+        }
+    }
 }
 
 public struct EventStreamApp: Codable, Equatable, Sendable {

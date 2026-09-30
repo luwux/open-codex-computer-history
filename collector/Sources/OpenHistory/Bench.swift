@@ -4,8 +4,9 @@ import Darwin
 import Foundation
 import HistoryCore
 
-/// `open-history bench <bundle-id> [iterations]` measures what the recorder's
-/// accessibility work costs a running application, per recorded-event path.
+/// `open-history bench <bundle-id | pid:N> [iterations] [--json FILE]`
+/// measures what the recorder's accessibility work costs a running
+/// application, per recorded-event path.
 ///
 /// Every accessibility request is answered on the target's main thread, so
 /// the target's CPU time and energy are the numbers that matter. They come
@@ -13,18 +14,40 @@ import HistoryCore
 /// the app bundle (Chromium and Electron helpers included), sampled before
 /// and after all iterations of a path and reported per iteration. The
 /// recorder's own cost (this process) is reported alongside. An idle row
-/// gives the target's background noise floor for one second.
+/// gives the target's background noise floor for one second; `net` columns
+/// subtract that rate. `--json` also writes the rows to FILE.
 func runBench(arguments: [String]) {
-    guard let bundleIdentifier = arguments.first,
-          let application = NSRunningApplication.runningApplications(
-              withBundleIdentifier: bundleIdentifier
-          ).first
-    else {
-        fputs("Usage: open-history bench <bundle-id> [iterations]\n", stderr)
+    var positional: [String] = []
+    var jsonPath: String?
+    var index = 0
+    while index < arguments.count {
+        if arguments[index] == "--json", index + 1 < arguments.count {
+            jsonPath = arguments[index + 1]
+            index += 2
+            continue
+        }
+        positional.append(arguments[index])
+        index += 1
+    }
+    let application: NSRunningApplication?
+    if let target = positional.first, target.hasPrefix("pid:"),
+       let pid = pid_t(target.dropFirst(4))
+    {
+        application = NSRunningApplication(processIdentifier: pid)
+    } else if let target = positional.first {
+        application = NSRunningApplication.runningApplications(
+            withBundleIdentifier: target
+        ).first
+    } else {
+        application = nil
+    }
+    guard let application else {
+        fputs("Usage: open-history bench <bundle-id | pid:N> [iterations] [--json FILE]\n", stderr)
         exit(2)
     }
-    let iterations = max(1, arguments.dropFirst().first.flatMap(Int.init) ?? 5)
+    let iterations = max(1, positional.dropFirst().first.flatMap(Int.init) ?? 5)
     let pid = application.processIdentifier
+    let bundleIdentifier = application.bundleIdentifier ?? ""
     let bundlePath = application.bundleURL?.path
     let settings = ObservationPolicy().axCapture
     configureAXMessagingTimeout(settings)
@@ -49,6 +72,7 @@ func runBench(arguments: [String]) {
         "self-cpu" as NSString
     ))
 
+    var rows: [[String: Any]] = []
     var idleCPUPerMillisecond = 0.0
     var idleEnergyPerMillisecond = 0.0
 
@@ -74,6 +98,18 @@ func runBench(arguments: [String]) {
         }
         samples.sort()
         let n = Double(iterations)
+        rows.append([
+            "path": label,
+            "medianMs": samples[samples.count / 2],
+            "maxMs": samples.last ?? 0,
+            "axCalls": calls,
+            "targetCpuMs": target.cpuMilliseconds / n,
+            "netTargetCpuMs": (target.cpuMilliseconds - idleCPUPerMillisecond * wall) / n,
+            "targetEnergyMJ": target.energyMillijoules / n,
+            "netTargetEnergyMJ": (target.energyMillijoules - idleEnergyPerMillisecond * wall) / n,
+            "targetWakeups": Double(target.wakeups) / n,
+            "recorderCpuMs": own.cpuMilliseconds / n,
+        ])
         print(String(
             format: "%-28@ %5.1f ms %5.1f ms %6d %6.2f ms %6.2f ms %8.2f %8.2f %6.1f %5.2f ms",
             label as NSString,
@@ -139,6 +175,18 @@ func runBench(arguments: [String]) {
             urlResolver: warmResolver
         )?.axRevision?.lines.count ?? 0
     }
+    let unbounded = AXCaptureSettings(
+        treeTimeBudgetMilliseconds: 60_000,
+        maximumChildrenPerElement: Int.max,
+        visibleChildrenAttributeByRole: [:]
+    )
+    measure("tree, no visible/cap/budget") {
+        AccessibilityReader.snapshot(
+            processIdentifier: pid,
+            settings: unbounded,
+            urlResolver: warmResolver
+        )?.axRevision?.lines.count ?? 0
+    }
     if let point = focusedWindowCenter(pid) {
         measure("click (context + tree)") {
             AccessibilityReader.snapshot(
@@ -160,6 +208,23 @@ func runBench(arguments: [String]) {
             "focused: \(context?.element?.role ?? "-") \(context?.element?.subrole ?? "")")
         if ProcessInfo.processInfo.environment["OPEN_HISTORY_BENCH_DUMP"] != nil {
             print(tree.fullText())
+        }
+    }
+    if let jsonPath {
+        let report: [String: Any] = [
+            "target": bundleIdentifier.isEmpty ? "pid:\(pid)" : bundleIdentifier,
+            "iterations": iterations,
+            "date": ISO8601DateFormatter().string(from: Date()),
+            "rows": rows,
+        ]
+        do {
+            let data = try JSONSerialization.data(
+                withJSONObject: report,
+                options: [.prettyPrinted, .sortedKeys]
+            )
+            try data.write(to: URL(fileURLWithPath: jsonPath))
+        } catch {
+            fputs("Could not write \(jsonPath): \(error)\n", stderr)
         }
     }
 }

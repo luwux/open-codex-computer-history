@@ -213,22 +213,11 @@ final class HistoryRecorder {
     }
 
     private func installEventTap() {
-        // Drags are measured from the down and up locations, so moved and
-        // dragged events (and modifier-only changes) are not requested.
-        let eventTypes: [CGEventType] = [
-            .leftMouseDown, .leftMouseUp,
-            .rightMouseDown, .rightMouseUp,
-            .otherMouseDown, .otherMouseUp,
-            .keyDown,
-        ]
-        let mask = eventTypes.reduce(CGEventMask(0)) {
-            $0 | (CGEventMask(1) << $1.rawValue)
-        }
         eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .listenOnly,
-            eventsOfInterest: mask,
+            eventsOfInterest: RecorderEventTap.mask,
             callback: eventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         )
@@ -1026,28 +1015,7 @@ final class HistoryRecorder {
     }
 
     private func shouldIncludeAX(_ kind: HistoryEventKind) -> Bool {
-        switch kind {
-        case .windowChanged,
-             .mouseClick,
-             .mouseContextMenu,
-             .mouseDrag,
-             .keyboardSubmit,
-             .keyboardShortcut,
-             .terminalValueChanged,
-             .debugError:
-            return true
-        case .sessionStarted,
-             .sessionEnded,
-             .keyboardTextInput,
-             .selectionChanged,
-             .systemScreenLocked,
-             .systemScreenUnlocked,
-             .systemWillSleep,
-             .systemDidWake,
-             .mediaPlaybackStarted,
-             .mediaPlaybackStopped:
-            return false
-        }
+        kind.carriesAXTree
     }
 
     // MARK: - Pause and resume

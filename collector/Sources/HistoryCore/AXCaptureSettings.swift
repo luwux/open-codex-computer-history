@@ -1,4 +1,21 @@
+import CoreGraphics
 import Foundation
+
+/// Input events the recorder's event tap requests. Drags are measured from
+/// the down and up locations, so moved/dragged events (which arrive at display
+/// refresh rate) and modifier-only changes are deliberately absent.
+public enum RecorderEventTap {
+    public static let eventTypes: [CGEventType] = [
+        .leftMouseDown, .leftMouseUp,
+        .rightMouseDown, .rightMouseUp,
+        .otherMouseDown, .otherMouseUp,
+        .keyDown,
+    ]
+
+    public static var mask: CGEventMask {
+        eventTypes.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
+    }
+}
 
 /// Bounds on the accessibility work one recorded event may cost.
 ///

@@ -49,6 +49,13 @@ struct FixtureView: View {
 
     private let items = ["Alpha", "Beta", "Gamma"]
 
+    /// Rows in the optional long list used by `scripts/perf-bench.sh`. Like
+    /// a mailbox, only visible rows exist until an accessibility client asks
+    /// for the others. Off (0) unless `OPEN_HISTORY_FIXTURE_ROWS` is set.
+    private let perfRowCount = ProcessInfo.processInfo.environment[
+        "OPEN_HISTORY_FIXTURE_ROWS"
+    ].flatMap(Int.init) ?? 0
+
     enum Field {
         case note
         case secret
@@ -62,6 +69,9 @@ struct FixtureView: View {
                 activityPanel
             }
             dragArea
+            if perfRowCount > 0 {
+                perfList
+            }
         }
         .padding(28)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -145,6 +155,21 @@ struct FixtureView: View {
                 .accessibilityIdentifier("fixture-action-count")
         }
         .frame(width: 230, alignment: .leading)
+    }
+
+    private var perfList: some View {
+        List(0..<perfRowCount, id: \.self) { index in
+            HStack {
+                Text("Synthetic sender \(index % 37)")
+                    .frame(width: 160, alignment: .leading)
+                Text("Synthetic subject line number \(index)")
+                Spacer()
+                Text("\(index % 24):\(String(format: "%02d", index % 60))")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(minHeight: 180)
+        .accessibilityIdentifier("fixture-perf-list")
     }
 
     private var dragArea: some View {
