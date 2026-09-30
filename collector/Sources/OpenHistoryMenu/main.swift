@@ -58,12 +58,19 @@ struct OpenHistoryMenuApp: App {
 
 @MainActor
 final class MenuController: ObservableObject {
-    @Published var status: RecorderRuntimeStatus
+    /// Only republished when the decoded runtime status actually changes, so
+    /// the `MenuBarExtra` is not re-rendered while the recorder is idle.
+    @Published private(set) var status: RecorderRuntimeStatus
 
     private let homeURL: URL
     private let controlStore: RuntimeControlStore
-    private var timer: Timer?
+    /// Raw bytes of the last `runtime.json` read; identical bytes skip decoding.
+    private var lastRuntimeData: Data?
+    private var homeWatcher: DispatchSourceFileSystemObject?
+    private var pendingRefresh: DispatchWorkItem?
+    private var fallbackTimer: Timer?
     private var permissionTimer: Timer?
+    private var menuObserver: NSObjectProtocol?
 
     init() {
         if let override = ProcessInfo.processInfo.environment[
@@ -80,12 +87,23 @@ final class MenuController: ObservableObject {
                 )
         }
         controlStore = RuntimeControlStore(homeURL: homeURL)
-        status = controlStore.readRuntime() ?? Self.stoppedStatus(homeURL)
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) {
-            [weak self] _ in
-            Task { @MainActor in
-                self?.refresh()
-            }
+        status = Self.stoppedStatus(homeURL)
+        refresh()
+        watchHomeDirectory()
+        // Safety net in case a file-system event is missed; the watcher and
+        // menu-open refresh keep the icon current in normal operation.
+        let fallback = Timer(timeInterval: 300, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        fallback.tolerance = 60
+        RunLoop.main.add(fallback, forMode: .common)
+        fallbackTimer = fallback
+        menuObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
         }
         if status.state == .stopped,
            controlStore.readControl()?.state != .paused
@@ -104,9 +122,9 @@ final class MenuController: ObservableObject {
         }
         CollectorPermissions.request()
         permissionTimer?.invalidate()
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) {
-            [weak self] timer in
-            Task { @MainActor in
+        // Polls only until both grants arrive, then invalidates itself.
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
                 guard let self, CollectorPermissions.isGranted else {
                     return
                 }
@@ -117,6 +135,9 @@ final class MenuController: ObservableObject {
                 }
             }
         }
+        timer.tolerance = 1
+        RunLoop.main.add(timer, forMode: .common)
+        permissionTimer = timer
     }
 
     var statusLabel: String {
@@ -185,8 +206,97 @@ final class MenuController: ObservableObject {
         NSWorkspace.shared.open(homeURL)
     }
 
+    /// Re-reads `runtime.json` and publishes only on an actual change.
     private func refresh() {
-        status = controlStore.readRuntime() ?? Self.stoppedStatus(homeURL)
+        let data = try? Data(contentsOf: controlStore.runtimeURL)
+        var next: RecorderRuntimeStatus
+        if data != nil, data == lastRuntimeData {
+            next = status
+        } else {
+            lastRuntimeData = data
+            next = controlStore.readRuntime() ?? Self.stoppedStatus(homeURL)
+        }
+        // A crashed recorder leaves a stale running/paused record behind.
+        if next.state != .stopped,
+           let pid = next.processIdentifier,
+           kill(pid, 0) != 0,
+           errno == ESRCH
+        {
+            next = Self.stoppedStatus(homeURL)
+        }
+        if !Self.isSame(next, status) {
+            status = next
+        }
+    }
+
+    private func scheduleRefresh() {
+        guard pendingRefresh == nil else {
+            return
+        }
+        // Coalesces the burst of directory events from an atomic rename.
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else {
+                    return
+                }
+                self.pendingRefresh = nil
+                self.refresh()
+            }
+        }
+        pendingRefresh = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    /// Watches the history home directory rather than `runtime.json` itself:
+    /// the recorder replaces the file atomically (write + rename), which
+    /// changes the directory's entries but would orphan a file descriptor.
+    private func watchHomeDirectory() {
+        homeWatcher?.cancel()
+        homeWatcher = nil
+        try? FileManager.default.createDirectory(
+            at: homeURL,
+            withIntermediateDirectories: true
+        )
+        let fd = open(homeURL.path, O_EVTONLY)
+        guard fd >= 0 else {
+            return
+        }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename],
+            queue: .main
+        )
+        source.setEventHandler { [weak self, weak source] in
+            MainActor.assumeIsolated {
+                guard let self, let source else {
+                    return
+                }
+                if !source.data.isDisjoint(with: [.delete, .rename]) {
+                    // The directory itself moved away; re-arm on the path.
+                    self.watchHomeDirectory()
+                }
+                self.scheduleRefresh()
+            }
+        }
+        source.setCancelHandler {
+            close(fd)
+        }
+        homeWatcher = source
+        source.resume()
+    }
+
+    private static func isSame(
+        _ lhs: RecorderRuntimeStatus,
+        _ rhs: RecorderRuntimeStatus
+    ) -> Bool {
+        lhs.state == rhs.state
+            && lhs.processIdentifier == rhs.processIdentifier
+            && lhs.eventStreamRootPath == rhs.eventStreamRootPath
+            && lhs.currentSegmentEventsPath == rhs.currentSegmentEventsPath
+            && lhs.currentSegmentMetadataPath == rhs.currentSegmentMetadataPath
+            && lhs.suppressedEventsPath == rhs.suppressedEventsPath
+            && lhs.startedAt == rhs.startedAt
+            && lhs.endedAt == rhs.endedAt
     }
 
     private func launchCollector() {
@@ -205,6 +315,11 @@ final class MenuController: ObservableObject {
         process.environment = ProcessInfo.processInfo.environment.merging([
             "OPEN_COMPUTER_HISTORY_HOME": homeURL.path,
         ]) { _, replacement in replacement }
+        process.terminationHandler = { [weak self] _ in
+            Task { @MainActor in
+                self?.refresh()
+            }
+        }
         try? process.run()
     }
 
