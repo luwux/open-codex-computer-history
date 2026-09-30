@@ -105,9 +105,9 @@ final class MenuController: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
-        if status.state == .stopped,
-           controlStore.readControl()?.state != .paused
-        {
+        // Start the collector even when paused: a paused collector costs
+        // almost nothing, and it owns resuming (CLI `resume`, `resumeAt`).
+        if status.state == .stopped {
             startCollector()
         }
     }
