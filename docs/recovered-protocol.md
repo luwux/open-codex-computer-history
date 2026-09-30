@@ -249,7 +249,11 @@ Idle time is not recorded as an event; it is the gap between events.
 AX trees in this implementation render web areas first (with their `url`),
 skip attribute-free structural containers, and request web accessibility from
 Chromium and Electron apps (`AXManualAccessibility`, falling back to
-`AXEnhancedUserInterface` for Chromium browsers).
+`AXEnhancedUserInterface` for Chromium browsers). Tables, outlines, lists, and
+grids render only their visible rows or children. To bound the cost to the
+observed app, a window's tree is captured at most every two seconds while its
+title and URL are unchanged; events inside that interval omit `ax`, and the
+next `diffFromPrevious` compares against the last emitted revision.
 
 ## Segment files
 

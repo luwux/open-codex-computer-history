@@ -6,12 +6,17 @@ import HistoryCore
 struct AccessibilitySnapshot {
     let app: EventStreamApp
     let window: EventStreamWindow?
-    let windowID: UInt32?
+    /// Recorder-internal identity of the focused window, stable across
+    /// requests (derived from the accessibility element, not the title).
+    let windowKey: String?
     let element: EventStreamAXElement?
     let selectedText: String?
     let selectedRange: EventStreamTextRange?
-    let selectedItems: [EventStreamAXElement]
-    let axRevision: AXTreeRevisionSnapshot?
+    var axRevision: AXTreeRevisionSnapshot?
+
+    let processIdentifier: pid_t
+    let windowElement: AXUIElement?
+    let focusedElement: AXUIElement?
 
     var dragEndpoint: EventStreamMouseDragEndpoint {
         EventStreamMouseDragEndpoint(app: app, window: window, element: element)
@@ -25,20 +30,71 @@ struct AccessibilitySnapshot {
                 url: url,
                 windowID: nil
             ),
-            windowID: windowID,
+            windowKey: windowKey,
             element: element,
             selectedText: selectedText,
             selectedRange: selectedRange,
-            selectedItems: selectedItems,
-            axRevision: axRevision
+            axRevision: axRevision,
+            processIdentifier: processIdentifier,
+            windowElement: windowElement,
+            focusedElement: focusedElement
+        )
+    }
+
+    func replacingElement(_ element: EventStreamAXElement?) -> AccessibilitySnapshot {
+        AccessibilitySnapshot(
+            app: app,
+            window: window,
+            windowKey: windowKey,
+            element: element,
+            selectedText: selectedText,
+            selectedRange: selectedRange,
+            axRevision: axRevision,
+            processIdentifier: processIdentifier,
+            windowElement: windowElement,
+            focusedElement: focusedElement
         )
     }
 }
 
 enum AccessibilityReader {
-    static func snapshot(
+    private static let applicationAttributes: [CFString] = [
+        kAXFocusedWindowAttribute as CFString,
+        kAXFocusedUIElementAttribute as CFString,
+        "AXURL" as CFString,
+        "AXDocument" as CFString,
+    ]
+
+    private static let windowAttributes: [CFString] = [
+        kAXTitleAttribute as CFString,
+        "AXURL" as CFString,
+        "AXDocument" as CFString,
+    ]
+
+    static let elementAttributes: [CFString] = [
+        kAXRoleAttribute as CFString,
+        kAXSubroleAttribute as CFString,
+        kAXTitleAttribute as CFString,
+        kAXDescriptionAttribute as CFString,
+        kAXValueAttribute as CFString,
+        kAXPlaceholderValueAttribute as CFString,
+        kAXIdentifierAttribute as CFString,
+    ]
+
+    private static let focusedAttributes: [CFString] = elementAttributes + [
+        "AXURL" as CFString,
+        "AXDocument" as CFString,
+        kAXSelectedTextAttribute as CFString,
+        kAXSelectedTextRangeAttribute as CFString,
+    ]
+
+    /// Reads the cheap context of the frontmost window: app, window title and
+    /// URL, and the focused element (or the element at `point`). Costs three
+    /// or four requests, plus one for a browser URL once it is cached.
+    static func context(
         processIdentifier: pid_t,
-        at point: CGPoint? = nil
+        at point: CGPoint? = nil,
+        urlResolver: BrowserURLResolver? = nil
     ) -> AccessibilitySnapshot? {
         guard let runningApplication = NSRunningApplication(processIdentifier: processIdentifier)
         else {
@@ -46,82 +102,165 @@ enum AccessibilityReader {
         }
 
         let appElement = AXUIElementCreateApplication(processIdentifier)
-        let windowElement = elementAttribute(appElement, kAXFocusedWindowAttribute as CFString)
-        let focusedElement = point.flatMap {
+        let application = AXAttributeValues(appElement, applicationAttributes)
+        let windowElement = application.element(kAXFocusedWindowAttribute as CFString)
+        var focusedElement = point.flatMap {
             elementAtPosition(appElement, point: $0)
-        } ?? elementAttribute(
-            appElement,
-            kAXFocusedUIElementAttribute as CFString
-        )
+        } ?? application.element(kAXFocusedUIElementAttribute as CFString)
 
-        let windowTitle = stringAttribute(windowElement, kAXTitleAttribute as CFString)
-        let basicURL = firstStringAttribute(
-            elements: [focusedElement, windowElement, appElement],
-            attributes: ["AXURL" as CFString, "AXDocument" as CFString]
-        )
-        let url = normalizedWebURL(basicURL)
-            ?? browserURL(
-                in: windowElement,
-                bundleIdentifier: runningApplication.bundleIdentifier
-            )
-        let role = stringAttribute(focusedElement, kAXRoleAttribute as CFString)
-        let subrole = stringAttribute(focusedElement, kAXSubroleAttribute as CFString)
-        let secureInput = ObservationPolicy.isSecureRole(role, subrole: subrole)
-        let element = focusedElement.map {
-            eventElement($0, includeValue: !secureInput)
+        let window = AXAttributeValues(windowElement, windowAttributes)
+        var focused = AXAttributeValues(focusedElement, focusedAttributes)
+        if point == nil, focused.status != .success {
+            // Web views replace the focused node while re-rendering, so the
+            // element can be missing or already invalid; ask once more.
+            if let value = axCopyAttribute(appElement, kAXFocusedUIElementAttribute as CFString),
+               CFGetTypeID(value) == AXUIElementGetTypeID()
+            {
+                focusedElement = (value as! AXUIElement)
+                focused = AXAttributeValues(focusedElement, focusedAttributes)
+            }
+        }
+        let windowTitle = window.string(kAXTitleAttribute as CFString)
+        let windowKey = windowElement.map {
+            "window:\(processIdentifier):\(CFHash($0))"
         }
 
-        let resolvedWindowID = windowID(
-            processIdentifier: processIdentifier,
-            title: windowTitle
-        )
+        var url: String?
+        for values in [focused, window, application] {
+            for name in ["AXURL" as CFString, "AXDocument" as CFString] {
+                if url == nil, let value = values.string(name), !value.isEmpty {
+                    url = value
+                }
+            }
+        }
+        let bundleIdentifier = runningApplication.bundleIdentifier
+        let resolvedURL = BrowserURLResolver.normalizedWebURL(url)
+            ?? urlResolver?.url(
+                window: windowElement,
+                windowKey: windowKey,
+                title: windowTitle,
+                bundleIdentifier: bundleIdentifier
+            )
+
+        let role = focused.string(kAXRoleAttribute as CFString)
+        let subrole = focused.string(kAXSubroleAttribute as CFString)
+        let secureInput = ObservationPolicy.isSecureRole(role, subrole: subrole)
+        let element = focusedElement.map { _ in
+            eventElement(focused, includeValue: !secureInput)
+        }
+        let selectedRange = focused.range(kAXSelectedTextRangeAttribute as CFString).map {
+            EventStreamTextRange(location: $0.location, length: $0.length)
+        }
+
         return AccessibilitySnapshot(
             app: EventStreamApp(
                 name: runningApplication.localizedName,
                 secureInput: secureInput,
                 processIdentifier: nil,
-                bundleIdentifier: runningApplication.bundleIdentifier
+                bundleIdentifier: bundleIdentifier
             ),
             window: EventStreamWindow(
                 title: windowTitle,
-                url: url,
+                url: resolvedURL,
                 windowID: nil
             ),
-            windowID: resolvedWindowID,
+            windowKey: windowKey,
             element: element,
             selectedText: secureInput
                 ? nil
-                : stringAttribute(focusedElement, kAXSelectedTextAttribute as CFString),
-            selectedRange: selectedRangeAttribute(focusedElement),
-            selectedItems: secureInput ? [] : selectedItems(from: focusedElement),
-            axRevision: AXTreeCapture.capture(
-                root: windowElement ?? focusedElement,
-                secureInput: secureInput
-            )
+                : focused.string(kAXSelectedTextAttribute as CFString),
+            selectedRange: selectedRange,
+            axRevision: nil,
+            processIdentifier: processIdentifier,
+            windowElement: windowElement,
+            focusedElement: focusedElement
         )
+    }
+
+    /// Context plus the window's accessibility tree.
+    static func snapshot(
+        processIdentifier: pid_t,
+        at point: CGPoint? = nil,
+        includeTree: Bool = true,
+        settings: AXCaptureSettings = AXCaptureSettings(),
+        urlResolver: BrowserURLResolver? = nil
+    ) -> AccessibilitySnapshot? {
+        guard var snapshot = context(
+            processIdentifier: processIdentifier,
+            at: point,
+            urlResolver: urlResolver
+        ) else {
+            return nil
+        }
+        if includeTree {
+            snapshot = captureTree(snapshot, settings: settings, urlResolver: urlResolver)
+        }
+        return snapshot
+    }
+
+    /// Adds the window's tree to a context snapshot.
+    static func captureTree(
+        _ snapshot: AccessibilitySnapshot,
+        settings: AXCaptureSettings,
+        urlResolver: BrowserURLResolver?
+    ) -> AccessibilitySnapshot {
+        guard let result = AXTreeCapture.capture(
+            root: snapshot.windowElement ?? snapshot.focusedElement,
+            secureInput: snapshot.app.secureInput,
+            settings: settings
+        ) else {
+            return snapshot
+        }
+        var snapshot = snapshot
+        snapshot.axRevision = result.revision
+        if let webArea = result.webArea,
+           let url = BrowserURLResolver.normalizedWebURL(result.webAreaURL)
+        {
+            urlResolver?.noteWebArea(
+                webArea,
+                windowKey: snapshot.windowKey,
+                title: snapshot.window?.title,
+                bundleIdentifier: snapshot.app.bundleIdentifier
+            )
+            if snapshot.window?.url == nil {
+                snapshot = snapshot.replacingWindowURL(url)
+            }
+        }
+        return snapshot
+    }
+
+    /// Reads the element's attributes in one request.
+    static func eventElement(_ element: AXUIElement, includeValue: Bool) -> EventStreamAXElement {
+        eventElement(AXAttributeValues(element, elementAttributes), includeValue: includeValue)
     }
 
     private static func eventElement(
-        _ element: AXUIElement,
+        _ values: AXAttributeValues,
         includeValue: Bool
     ) -> EventStreamAXElement {
         EventStreamAXElement(
-            role: stringAttribute(element, kAXRoleAttribute as CFString),
-            subrole: stringAttribute(element, kAXSubroleAttribute as CFString),
-            title: stringAttribute(element, kAXTitleAttribute as CFString),
-            description: stringAttribute(element, kAXDescriptionAttribute as CFString),
-            value: includeValue ? stringAttribute(element, kAXValueAttribute as CFString) : nil,
-            placeholder: stringAttribute(element, kAXPlaceholderValueAttribute as CFString),
-            identifier: stringAttribute(element, kAXIdentifierAttribute as CFString)
+            role: values.string(kAXRoleAttribute as CFString),
+            subrole: values.string(kAXSubroleAttribute as CFString),
+            title: values.string(kAXTitleAttribute as CFString),
+            description: values.string(kAXDescriptionAttribute as CFString),
+            value: includeValue ? values.string(kAXValueAttribute as CFString) : nil,
+            placeholder: values.string(kAXPlaceholderValueAttribute as CFString),
+            identifier: values.string(kAXIdentifierAttribute as CFString)
         )
     }
 
-    private static func selectedItems(from element: AXUIElement?) -> [EventStreamAXElement] {
-        for attributeName in [
+    /// Selected children or rows of the focused element, read only when a
+    /// selection event is about to be written.
+    static func selectedItems(from element: AXUIElement?) -> [EventStreamAXElement] {
+        let values = AXAttributeValues(element, [
+            kAXSelectedChildrenAttribute as CFString,
+            kAXSelectedRowsAttribute as CFString,
+        ])
+        for name in [
             kAXSelectedChildrenAttribute as CFString,
             kAXSelectedRowsAttribute as CFString,
         ] {
-            guard let raw = attribute(element, attributeName) as? [AXUIElement] else {
+            guard let raw = values.elements(name) else {
                 continue
             }
             return raw.prefix(50).map { eventElement($0, includeValue: true) }
@@ -129,130 +268,18 @@ enum AccessibilityReader {
         return []
     }
 
-    private static func firstStringAttribute(
-        elements: [AXUIElement?],
-        attributes: [CFString]
-    ) -> String? {
-        for element in elements.compactMap({ $0 }) {
-            for attribute in attributes {
-                if let value = stringAttribute(element, attribute), !value.isEmpty {
-                    return value
-                }
-            }
-        }
-        return nil
+    /// Selected text range of one element, in one request. `nil` when the
+    /// element has no text selection attribute.
+    static func selectedRange(of element: AXUIElement) -> CFRange? {
+        AXAttributeValues(element, [kAXSelectedTextRangeAttribute as CFString])
+            .range(kAXSelectedTextRangeAttribute as CFString)
     }
 
-    private static func browserURL(
-        in root: AXUIElement?,
-        bundleIdentifier: String?
-    ) -> String? {
-        guard let root,
-              let bundleIdentifier,
-              ObservationPolicy.browserBundleIdentifiers.contains(bundleIdentifier)
-        else {
-            return nil
-        }
-        var queue = [root]
-        var visited = Set<CFHashCode>()
-        var count = 0
-        while !queue.isEmpty, count < 500 {
-            let element = queue.removeFirst()
-            count += 1
-            guard visited.insert(CFHash(element)).inserted else {
-                continue
-            }
-            for attribute in ["AXURL" as CFString, "AXDocument" as CFString] {
-                if let url = normalizedWebURL(stringAttribute(element, attribute)) {
-                    return url
-                }
-            }
-            let role = stringAttribute(element, kAXRoleAttribute as CFString)
-            let label = [
-                stringAttribute(element, kAXTitleAttribute as CFString),
-                stringAttribute(element, kAXDescriptionAttribute as CFString),
-                stringAttribute(element, kAXIdentifierAttribute as CFString),
-            ].compactMap { $0 }.joined(separator: " ").lowercased()
-            if ObservationPolicy.isBrowserAddressField(role: role, label: label) {
-                if let url = ObservationPolicy.addressBarURL(
-                    stringAttribute(element, kAXValueAttribute as CFString)
-                ) {
-                    return url
-                }
-            }
-            queue.append(contentsOf: childElements(element))
-        }
-        return nil
-    }
-
-    private static func normalizedWebURL(_ value: String?) -> String? {
-        guard let value,
-              let url = URL(string: value),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https"
-        else {
-            return nil
-        }
-        return url.absoluteString
-    }
-
-    private static func childElements(_ element: AXUIElement) -> [AXUIElement] {
-        guard let value = attribute(element, kAXChildrenAttribute as CFString) else {
-            return []
-        }
-        return value as? [AXUIElement] ?? []
-    }
-
-    private static func selectedRangeAttribute(
-        _ element: AXUIElement?
-    ) -> EventStreamTextRange? {
-        guard let value = attribute(element, kAXSelectedTextRangeAttribute as CFString),
-              CFGetTypeID(value) == AXValueGetTypeID()
-        else {
-            return nil
-        }
-        var range = CFRange()
-        guard AXValueGetValue(value as! AXValue, .cfRange, &range) else {
-            return nil
-        }
-        return EventStreamTextRange(location: range.location, length: range.length)
-    }
-
-    private static func windowID(processIdentifier: pid_t, title: String?) -> UInt32? {
-        guard let windows = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[String: Any]] else {
-            return nil
-        }
-        let candidates = windows.filter {
-            ($0[kCGWindowOwnerPID as String] as? Int32) == processIdentifier
-        }
-        let match = candidates.first {
-            guard let title, !title.isEmpty else {
-                return true
-            }
-            return ($0[kCGWindowName as String] as? String) == title
-        } ?? candidates.first
-        return (match?[kCGWindowNumber as String] as? NSNumber)?.uint32Value
-    }
-
-    private static func elementAttribute(
-        _ element: AXUIElement?,
-        _ name: CFString
-    ) -> AXUIElement? {
-        guard let value = attribute(element, name),
-              CFGetTypeID(value) == AXUIElementGetTypeID()
-        else {
-            return nil
-        }
-        return (value as! AXUIElement)
-    }
-
-    private static func elementAtPosition(
+    static func elementAtPosition(
         _ application: AXUIElement,
         point: CGPoint
     ) -> AXUIElement? {
+        AXCallCounter.record()
         var element: AXUIElement?
         guard AXUIElementCopyElementAtPosition(
             application,
@@ -264,34 +291,156 @@ enum AccessibilityReader {
         }
         return element
     }
+}
 
-    private static func stringAttribute(
-        _ element: AXUIElement?,
-        _ name: CFString
+/// Finds a browser window's page URL without walking the window each time.
+///
+/// The first lookup for a window title searches the window (one batched
+/// request per node) for a web area `AXURL` or the address field. The element
+/// found is cached with the title; while the title stays the same, later
+/// lookups re-read just that element, so same-title navigations still update.
+final class BrowserURLResolver {
+    private enum Source {
+        case webArea(AXUIElement)
+        case addressField(AXUIElement)
+    }
+
+    private struct Entry {
+        let title: String?
+        let source: Source
+    }
+
+    private var entries: [String: Entry] = [:]
+    private let searchLimit: Int
+    private let searchBudgetNanoseconds: UInt64
+
+    init(searchLimit: Int = 300, searchBudgetMilliseconds: Double = 100) {
+        self.searchLimit = searchLimit
+        self.searchBudgetNanoseconds = UInt64(searchBudgetMilliseconds * 1_000_000)
+    }
+
+    func reset() {
+        entries.removeAll()
+    }
+
+    func url(
+        window: AXUIElement?,
+        windowKey: String?,
+        title: String?,
+        bundleIdentifier: String?
     ) -> String? {
-        guard let value = attribute(element, name) else {
+        guard let window,
+              let bundleIdentifier,
+              ObservationPolicy.browserBundleIdentifiers.contains(bundleIdentifier)
+        else {
             return nil
         }
-        if let string = value as? String {
-            return string
+        if let windowKey, let entry = entries[windowKey], entry.title == title,
+           let url = read(entry.source)
+        {
+            return url
         }
-        if let url = value as? URL {
-            return url.absoluteString
+        guard let (url, source) = search(window) else {
+            if let windowKey {
+                entries.removeValue(forKey: windowKey)
+            }
+            return nil
+        }
+        if let windowKey {
+            store(Entry(title: title, source: source), for: windowKey)
+        }
+        return url
+    }
+
+    func noteWebArea(
+        _ webArea: AXUIElement,
+        windowKey: String?,
+        title: String?,
+        bundleIdentifier: String?
+    ) {
+        guard let windowKey,
+              let bundleIdentifier,
+              ObservationPolicy.browserBundleIdentifiers.contains(bundleIdentifier)
+        else {
+            return
+        }
+        store(Entry(title: title, source: .webArea(webArea)), for: windowKey)
+    }
+
+    private func store(_ entry: Entry, for windowKey: String) {
+        if entries.count > 64 {
+            entries.removeAll()
+        }
+        entries[windowKey] = entry
+    }
+
+    private func read(_ source: Source) -> String? {
+        switch source {
+        case let .webArea(element):
+            return Self.normalizedWebURL(
+                AXAttributeValues(element, ["AXURL" as CFString]).string("AXURL" as CFString)
+            )
+        case let .addressField(element):
+            return ObservationPolicy.addressBarURL(
+                AXAttributeValues(element, [kAXValueAttribute as CFString])
+                    .string(kAXValueAttribute as CFString)
+            )
+        }
+    }
+
+    private static let searchAttributes: [CFString] = [
+        kAXRoleAttribute as CFString,
+        kAXTitleAttribute as CFString,
+        kAXDescriptionAttribute as CFString,
+        kAXIdentifierAttribute as CFString,
+        kAXChildrenAttribute as CFString,
+        "AXURL" as CFString,
+        "AXDocument" as CFString,
+    ]
+
+    private func search(_ root: AXUIElement) -> (String, Source)? {
+        let deadline = DispatchTime.now().uptimeNanoseconds + searchBudgetNanoseconds
+        var queue = [root]
+        var visited = Set<AXElementKey>()
+        var index = 0
+        while index < queue.count, visited.count < searchLimit,
+              DispatchTime.now().uptimeNanoseconds < deadline
+        {
+            let element = queue[index]
+            index += 1
+            guard visited.insert(AXElementKey(element: element)).inserted else {
+                continue
+            }
+            let values = AXAttributeValues(element, Self.searchAttributes)
+            for name in ["AXURL" as CFString, "AXDocument" as CFString] {
+                if let url = Self.normalizedWebURL(values.string(name)) {
+                    return (url, .webArea(element))
+                }
+            }
+            let role = values.string(kAXRoleAttribute as CFString)
+            let label = [
+                values.string(kAXTitleAttribute as CFString),
+                values.string(kAXDescriptionAttribute as CFString),
+                values.string(kAXIdentifierAttribute as CFString),
+            ].compactMap { $0 }.joined(separator: " ").lowercased()
+            if ObservationPolicy.isBrowserAddressField(role: role, label: label),
+               let url = read(.addressField(element))
+            {
+                return (url, .addressField(element))
+            }
+            queue.append(contentsOf: values.elements(kAXChildrenAttribute as CFString) ?? [])
         }
         return nil
     }
 
-    private static func attribute(
-        _ element: AXUIElement?,
-        _ name: CFString
-    ) -> CFTypeRef? {
-        guard let element else {
+    static func normalizedWebURL(_ value: String?) -> String? {
+        guard let value,
+              let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https"
+        else {
             return nil
         }
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, name, &value) == .success else {
-            return nil
-        }
-        return value
+        return url.absoluteString
     }
 }

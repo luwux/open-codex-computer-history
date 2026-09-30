@@ -181,6 +181,33 @@ Copy [config.example.json](config.example.json) to:
 Policies support either excluding listed sources or including only listed
 sources.
 
+Accessibility reads are answered on the observed app's main thread, so the
+recorder bounds them. Typing reads the focused element once per burst; AX
+trees are captured only for events that carry them, at most every
+`minimumTreeIntervalSeconds` per window while its title and URL are unchanged
+(skipped events carry no `ax`). Tables, outlines, lists, and grids contribute
+only their visible rows. The optional `axCapture` object in `config.json`
+overrides the defaults:
+
+```json
+"axCapture": {
+  "minimumTreeIntervalSeconds": 2,
+  "treeTimeBudgetMilliseconds": 250,
+  "messagingTimeoutMilliseconds": 250,
+  "maximumChildrenPerElement": 200,
+  "visibleChildrenAttributeByRole": {
+    "AXTable": "AXVisibleRows",
+    "AXOutline": "AXVisibleRows",
+    "AXList": "AXVisibleChildren",
+    "AXGrid": "AXVisibleChildren"
+  }
+}
+```
+
+`open-history bench <bundle-id> [iterations]` reports what each recording path
+costs a running app: accessibility requests, and CPU time, energy, and wakeups
+of the app's processes and of the recorder.
+
 ## MCP
 
 Start the local MCP server:

@@ -45,21 +45,25 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
     public var observation: ObservationSettings
     public var showMenuBarIcon: Bool
     public var captureText: Bool
+    public var axCapture: AXCaptureSettings
 
     public init(
         observation: ObservationSettings = ObservationSettings(),
         showMenuBarIcon: Bool = true,
-        captureText: Bool = true
+        captureText: Bool = true,
+        axCapture: AXCaptureSettings = AXCaptureSettings()
     ) {
         self.observation = observation
         self.showMenuBarIcon = showMenuBarIcon
         self.captureText = captureText
+        self.axCapture = axCapture
     }
 
     private enum CodingKeys: String, CodingKey {
         case observation
         case showMenuBarIcon
         case captureText
+        case axCapture
     }
 
     public init(from decoder: Decoder) throws {
@@ -76,6 +80,10 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .captureText
         ) ?? true
+        axCapture = try container.decodeIfPresent(
+            AXCaptureSettings.self,
+            forKey: .axCapture
+        ) ?? AXCaptureSettings()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -83,6 +91,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         try container.encode(observation, forKey: .observation)
         try container.encode(showMenuBarIcon, forKey: .showMenuBarIcon)
         try container.encode(captureText, forKey: .captureText)
+        try container.encode(axCapture, forKey: .axCapture)
     }
 
     public func allowsApplication(_ bundleIdentifier: String) -> Bool {

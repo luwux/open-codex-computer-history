@@ -20,6 +20,8 @@ case "status":
     printStatus(homeURL: homeURL)
 case "pause":
     writePauseControl(arguments: Array(arguments.dropFirst()), homeURL: homeURL)
+case "bench":
+    runBench(arguments: Array(arguments.dropFirst()))
 case "resume":
     writeControlState(.running, homeURL: homeURL)
 default:
