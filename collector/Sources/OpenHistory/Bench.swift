@@ -4,9 +4,15 @@ import Darwin
 import Foundation
 import HistoryCore
 
-/// `open-history bench <bundle-id | pid:N> [iterations] [--json FILE]`
-/// measures what the recorder's accessibility work costs a running
-/// application, per recorded-event path.
+/// `open-history bench <bundle-id | pid:N> [iterations] [--json FILE]
+/// [--web-accessibility]` measures what the recorder's accessibility work
+/// costs a running application, per recorded-event path.
+///
+/// The recorder does not switch Chromium and Electron apps into web
+/// accessibility mode by default, so neither does the bench. With
+/// `--web-accessibility` it sets `AXManualAccessibility` for the run (to
+/// measure what `"webAccessibility": "manual"` costs) and clears it at the
+/// end.
 ///
 /// Every accessibility request is answered on the target's main thread, so
 /// the target's CPU time and energy are the numbers that matter. They come
@@ -19,11 +25,17 @@ import HistoryCore
 func runBench(arguments: [String]) {
     var positional: [String] = []
     var jsonPath: String?
+    var webAccessibility = false
     var index = 0
     while index < arguments.count {
         if arguments[index] == "--json", index + 1 < arguments.count {
             jsonPath = arguments[index + 1]
             index += 2
+            continue
+        }
+        if arguments[index] == "--web-accessibility" {
+            webAccessibility = true
+            index += 1
             continue
         }
         positional.append(arguments[index])
@@ -42,7 +54,11 @@ func runBench(arguments: [String]) {
         application = nil
     }
     guard let application else {
-        fputs("Usage: open-history bench <bundle-id | pid:N> [iterations] [--json FILE]\n", stderr)
+        fputs(
+            "Usage: open-history bench <bundle-id | pid:N> [iterations] [--json FILE] " +
+                "[--web-accessibility]\n",
+            stderr
+        )
         exit(2)
     }
     let iterations = max(1, positional.dropFirst().first.flatMap(Int.init) ?? 5)
@@ -52,15 +68,26 @@ func runBench(arguments: [String]) {
     let settings = ObservationPolicy().axCapture
     configureAXMessagingTimeout(settings)
 
-    // The recorder requests Chromium/Electron web accessibility on activation;
-    // do the same so web content is measured. Chromium builds the tree
-    // asynchronously, so give it a moment.
-    AXUIElementSetAttributeValue(
-        AXUIElementCreateApplication(pid),
-        "AXManualAccessibility" as CFString,
-        kCFBooleanTrue
-    )
-    Thread.sleep(forTimeInterval: 2)
+    if webAccessibility {
+        // Opt-in, as in the recorder. Chromium applies it after a 2 s
+        // debounce and builds the tree asynchronously, so give it a moment.
+        AXUIElementSetAttributeValue(
+            AXUIElementCreateApplication(pid),
+            "AXManualAccessibility" as CFString,
+            kCFBooleanTrue
+        )
+        Thread.sleep(forTimeInterval: 3)
+    }
+    defer {
+        if webAccessibility {
+            AXUIElementSetAttributeValue(
+                AXUIElementCreateApplication(pid),
+                "AXManualAccessibility" as CFString,
+                kCFBooleanFalse
+            )
+        }
+    }
+    print("web accessibility mode requested by bench: \(webAccessibility ? "yes" : "no")")
 
     print("per iteration; target = all processes in the app bundle; net = target minus")
     print("the idle row's background rate over the same wall time; self = recorder\n")
@@ -214,6 +241,7 @@ func runBench(arguments: [String]) {
         let report: [String: Any] = [
             "target": bundleIdentifier.isEmpty ? "pid:\(pid)" : bundleIdentifier,
             "iterations": iterations,
+            "webAccessibility": webAccessibility,
             "date": ISO8601DateFormatter().string(from: Date()),
             "rows": rows,
         ]

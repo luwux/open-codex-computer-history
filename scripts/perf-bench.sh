@@ -3,24 +3,31 @@
 # target (the repo's fixture app with a long, mailbox-like list) and,
 # optionally, real apps given by bundle id.
 #
-#   scripts/perf-bench.sh [--json] [--iterations N] [--rows N] [bundle-id ...]
+#   scripts/perf-bench.sh [--json] [--iterations N] [--rows N] [--web-accessibility]
+#                         [bundle-id ...]
 #
 # Needs Accessibility permission for the terminal running it. The fixture is
 # launched in the background (no focus change) and quit afterwards. With
 # --json, results are written to docs/perf-results/<UTC timestamp>.json.
+# Real apps are measured as the recorder sees them by default, without
+# Chromium/Electron web accessibility mode. --web-accessibility sets
+# AXManualAccessibility on each real app for its run (what the recorder's
+# "webAccessibility": "manual" does) and clears it afterwards.
 set -euo pipefail
 
 root=${0:A:h:h}
 iterations=10
 rows=2000
 write_json=0
+web_ax=()
 targets=()
 while (( $# )); do
   case $1 in
     --json) write_json=1 ;;
     --iterations) iterations=$2; shift ;;
     --rows) rows=$2; shift ;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    --web-accessibility) web_ax=(--web-accessibility) ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) targets+=("$1") ;;
   esac
   shift
@@ -74,9 +81,10 @@ sleep 2
 results=()
 run() {
   local target=$1 label=$2
+  shift 2
   echo "\n== $label"
   local out="$work/$label.json"
-  if "$bin/open-history" bench "$target" "$iterations" --json "$out"; then
+  if "$bin/open-history" bench "$target" "$iterations" --json "$out" "$@"; then
     results+=("$out")
   else
     echo "(skipped: $target is not running)"
@@ -85,7 +93,7 @@ run() {
 
 run "pid:$fixture_pid" fixture
 for target in "${targets[@]}"; do
-  run "$target" "$target"
+  run "$target" "$target" "${web_ax[@]}"
 done
 
 if (( write_json )); then
