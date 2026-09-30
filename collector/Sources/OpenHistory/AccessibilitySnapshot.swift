@@ -13,6 +13,8 @@ struct AccessibilitySnapshot {
     let selectedText: String?
     let selectedRange: EventStreamTextRange?
     var axRevision: AXTreeRevisionSnapshot?
+    /// The browser reported the window as incognito/private.
+    var isPrivateWindow = false
 
     let processIdentifier: pid_t
     let windowElement: AXUIElement?
@@ -35,6 +37,7 @@ struct AccessibilitySnapshot {
             selectedText: selectedText,
             selectedRange: selectedRange,
             axRevision: axRevision,
+            isPrivateWindow: isPrivateWindow,
             processIdentifier: processIdentifier,
             windowElement: windowElement,
             focusedElement: focusedElement
@@ -50,6 +53,7 @@ struct AccessibilitySnapshot {
             selectedText: selectedText,
             selectedRange: selectedRange,
             axRevision: axRevision,
+            isPrivateWindow: isPrivateWindow,
             processIdentifier: processIdentifier,
             windowElement: windowElement,
             focusedElement: focusedElement
@@ -90,11 +94,15 @@ enum AccessibilityReader {
 
     /// Reads the cheap context of the frontmost window: app, window title and
     /// URL, and the focused element (or the element at `point`). Costs three
-    /// or four requests, plus one for a browser URL once it is cached.
+    /// or four requests. A browser's page URL comes from its scripting
+    /// dictionary when `browserScripting` can reach it (cached per window
+    /// title), otherwise from the window's accessibility attributes, then
+    /// from `urlResolver` (one more request once cached).
     static func context(
         processIdentifier: pid_t,
         at point: CGPoint? = nil,
-        urlResolver: BrowserURLResolver? = nil
+        urlResolver: BrowserURLResolver? = nil,
+        browserScripting: BrowserScriptingResolver? = nil
     ) -> AccessibilitySnapshot? {
         guard let runningApplication = NSRunningApplication(processIdentifier: processIdentifier)
         else {
@@ -121,7 +129,7 @@ enum AccessibilityReader {
                 focused = AXAttributeValues(focusedElement, focusedAttributes)
             }
         }
-        let windowTitle = window.string(kAXTitleAttribute as CFString)
+        let axWindowTitle = window.string(kAXTitleAttribute as CFString)
         let windowKey = windowElement.map {
             "window:\(processIdentifier):\(CFHash($0))"
         }
@@ -135,11 +143,21 @@ enum AccessibilityReader {
             }
         }
         let bundleIdentifier = runningApplication.bundleIdentifier
-        let resolvedURL = BrowserURLResolver.normalizedWebURL(url)
+        // The browser's own answer comes first: a focused link's `AXURL` is
+        // the link target, not the page.
+        let tab = browserScripting?.tab(
+            processIdentifier: processIdentifier,
+            bundleIdentifier: bundleIdentifier,
+            windowKey: windowKey,
+            title: axWindowTitle
+        )
+        let windowTitle = axWindowTitle?.isEmpty == false ? axWindowTitle : tab?.title
+        let resolvedURL = tab?.url
+            ?? BrowserURLResolver.normalizedWebURL(url)
             ?? urlResolver?.url(
                 window: windowElement,
                 windowKey: windowKey,
-                title: windowTitle,
+                title: axWindowTitle,
                 bundleIdentifier: bundleIdentifier
             )
 
@@ -172,6 +190,7 @@ enum AccessibilityReader {
                 : focused.string(kAXSelectedTextAttribute as CFString),
             selectedRange: selectedRange,
             axRevision: nil,
+            isPrivateWindow: tab?.isPrivate ?? false,
             processIdentifier: processIdentifier,
             windowElement: windowElement,
             focusedElement: focusedElement
@@ -184,12 +203,14 @@ enum AccessibilityReader {
         at point: CGPoint? = nil,
         includeTree: Bool = true,
         settings: AXCaptureSettings = AXCaptureSettings(),
-        urlResolver: BrowserURLResolver? = nil
+        urlResolver: BrowserURLResolver? = nil,
+        browserScripting: BrowserScriptingResolver? = nil
     ) -> AccessibilitySnapshot? {
         guard var snapshot = context(
             processIdentifier: processIdentifier,
             at: point,
-            urlResolver: urlResolver
+            urlResolver: urlResolver,
+            browserScripting: browserScripting
         ) else {
             return nil
         }

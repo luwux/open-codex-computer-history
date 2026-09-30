@@ -47,19 +47,22 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
     public var captureText: Bool
     public var axCapture: AXCaptureSettings
     public var webAccessibility: WebAccessibilitySettings
+    public var browserScripting: BrowserScriptingSettings
 
     public init(
         observation: ObservationSettings = ObservationSettings(),
         showMenuBarIcon: Bool = true,
         captureText: Bool = true,
         axCapture: AXCaptureSettings = AXCaptureSettings(),
-        webAccessibility: WebAccessibilitySettings = WebAccessibilitySettings()
+        webAccessibility: WebAccessibilitySettings = WebAccessibilitySettings(),
+        browserScripting: BrowserScriptingSettings = BrowserScriptingSettings()
     ) {
         self.observation = observation
         self.showMenuBarIcon = showMenuBarIcon
         self.captureText = captureText
         self.axCapture = axCapture
         self.webAccessibility = webAccessibility
+        self.browserScripting = browserScripting
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -68,6 +71,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         case captureText
         case axCapture
         case webAccessibility
+        case browserScripting
     }
 
     public init(from decoder: Decoder) throws {
@@ -92,6 +96,10 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
             WebAccessibilitySettings.self,
             forKey: .webAccessibility
         ) ?? WebAccessibilitySettings()
+        browserScripting = try container.decodeIfPresent(
+            BrowserScriptingSettings.self,
+            forKey: .browserScripting
+        ) ?? BrowserScriptingSettings()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -101,6 +109,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         try container.encode(captureText, forKey: .captureText)
         try container.encode(axCapture, forKey: .axCapture)
         try container.encode(webAccessibility, forKey: .webAccessibility)
+        try container.encode(browserScripting, forKey: .browserScripting)
     }
 
     public func allowsApplication(_ bundleIdentifier: String) -> Bool {
@@ -131,7 +140,8 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         windowTitle: String?,
         urlDomain: String?,
         role: String?,
-        subrole: String?
+        subrole: String?,
+        privateWindow: Bool = false
     ) -> String? {
         guard allowsApplication(bundleIdentifier) else {
             return "application_policy"
@@ -139,7 +149,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         guard allowsDomain(urlDomain) else {
             return "url_policy"
         }
-        if Self.isPrivateBrowsing(
+        if privateWindow || Self.isPrivateBrowsing(
             bundleIdentifier: bundleIdentifier,
             title: windowTitle
         ) {
@@ -279,10 +289,15 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         "com.google.Chrome.beta",
         "com.google.Chrome.canary",
         "com.google.Chrome.dev",
+        "org.chromium.Chromium",
+        "com.brave.Browser",
+        "com.brave.Browser.beta",
+        "com.brave.Browser.nightly",
         "com.microsoft.edgemac",
         "com.microsoft.edgemac.Beta",
         "com.microsoft.edgemac.Canary",
         "com.microsoft.edgemac.Dev",
+        "com.vivaldi.Vivaldi",
         "company.thebrowser.Browser",
         "company.thebrowser.dia",
         "com.openai.atlas",
@@ -294,6 +309,11 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         "com.google.Chrome.beta",
         "com.google.Chrome.canary",
         "com.google.Chrome.dev",
+        "org.chromium.Chromium",
+        "com.brave.Browser",
+        "com.brave.Browser.beta",
+        "com.brave.Browser.nightly",
+        "com.vivaldi.Vivaldi",
         "com.apple.Safari",
         "com.apple.SafariTechnologyPreview",
         "com.microsoft.edgemac",

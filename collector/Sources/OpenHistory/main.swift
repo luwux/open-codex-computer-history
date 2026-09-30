@@ -22,6 +22,8 @@ case "pause":
     writePauseControl(arguments: Array(arguments.dropFirst()), homeURL: homeURL)
 case "bench":
     runBench(arguments: Array(arguments.dropFirst()))
+case "browser-tab":
+    printBrowserTab(arguments: Array(arguments.dropFirst()), homeURL: homeURL)
 case "resume":
     writeControlState(.running, homeURL: homeURL)
 default:
@@ -209,6 +211,65 @@ func printStatus(homeURL: URL) {
     }
 }
 
+/// Reads the active tab of a running browser through its scripting
+/// dictionary, as the recorder does, asking for the Automation permission if
+/// it was never decided. Useful to grant or check that permission.
+func printBrowserTab(arguments: [String], homeURL: URL) {
+    let settings = loadPolicy(homeURL: homeURL).browserScripting
+    let application: NSRunningApplication?
+    if let bundleIdentifier = arguments.first(where: { !$0.hasPrefix("--") }) {
+        application = NSRunningApplication.runningApplications(
+            withBundleIdentifier: bundleIdentifier
+        ).first
+    } else {
+        application = NSWorkspace.shared.runningApplications.first {
+            $0.bundleIdentifier.flatMap { settings.browser(for: $0) } != nil
+        }
+    }
+    guard let application, let bundleIdentifier = application.bundleIdentifier,
+          let browser = settings.browser(for: bundleIdentifier)
+    else {
+        fputs(
+            "No running scriptable browser (or browserScripting is disabled or excludes it).\n",
+            stderr
+        )
+        exit(2)
+    }
+    let permission = BrowserAppleEvents.permission(
+        processIdentifier: application.processIdentifier,
+        ask: !arguments.contains("--no-prompt")
+    )
+    var output: [String: Any] = [
+        "bundleIdentifier": bundleIdentifier,
+        "permission": permission.string == nil && permission == .value(nil)
+            ? "granted"
+            : "\(permission)",
+    ]
+    if case .value = permission {
+        let start = DispatchTime.now().uptimeNanoseconds
+        let result = BrowserAppleEvents.activeTab(
+            processIdentifier: application.processIdentifier,
+            browser: browser,
+            timeout: max(settings.timeoutMilliseconds, 10) / 1000
+        )
+        output["milliseconds"] = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
+        if case .value = result.outcome {
+            output["outcome"] = "ok"
+        } else {
+            output["outcome"] = "\(result.outcome)"
+        }
+        output["url"] = result.tab?.url as Any
+        output["title"] = result.tab?.title as Any
+        output["private"] = result.tab?.isPrivate as Any
+    }
+    if let data = try? JSONSerialization.data(
+        withJSONObject: output,
+        options: [.prettyPrinted, .sortedKeys]
+    ), let text = String(data: data, encoding: .utf8) {
+        print(text)
+    }
+}
+
 func writeControlState(_ state: RecorderState, homeURL: URL) {
     do {
         try RuntimeControlStore(homeURL: homeURL).writeControl(state)
@@ -266,6 +327,7 @@ func printUsage() {
       open-history sample
       open-history permissions [--no-prompt]
       open-history status
+      open-history browser-tab [BUNDLE-ID] [--no-prompt]
       open-history pause [--for 30m|1h|tomorrow]
       open-history resume
 

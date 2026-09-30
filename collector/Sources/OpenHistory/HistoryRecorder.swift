@@ -74,6 +74,7 @@ final class HistoryRecorder {
     private var latestURLByWindowKey: [String: String] = [:]
     private var captureThrottle: AXCaptureThrottle
     private let urlResolver = BrowserURLResolver()
+    private let browserScripting: BrowserScriptingResolver
     private var controlWatcher: DispatchSourceFileSystemObject?
     private var controlCheckTask: DispatchWorkItem?
     private var controlFallbackTimer: Timer?
@@ -90,6 +91,7 @@ final class HistoryRecorder {
             "OPEN_HISTORY_SEGMENT_SECONDS"
         ].flatMap(Double.init) ?? 600
         self.policy = policy
+        self.browserScripting = BrowserScriptingResolver(settings: policy.browserScripting)
         self.captureThrottle = AXCaptureThrottle(
             minimumInterval: policy.axCapture.minimumTreeIntervalSeconds
         )
@@ -389,7 +391,11 @@ final class HistoryRecorder {
             base = destination
         } else {
             base = down.processIdentifier.flatMap {
-                AccessibilityReader.context(processIdentifier: $0, urlResolver: urlResolver)
+                AccessibilityReader.context(
+                    processIdentifier: $0,
+                    urlResolver: urlResolver,
+                    browserScripting: browserScripting
+                )
             }
         }
         guard let base else {
@@ -705,7 +711,8 @@ final class HistoryRecorder {
               var snapshot = AccessibilityReader.context(
                   processIdentifier: currentProcessIdentifier,
                   at: point,
-                  urlResolver: urlResolver
+                  urlResolver: urlResolver,
+                  browserScripting: browserScripting
               )
         else {
             return nil
@@ -775,7 +782,8 @@ final class HistoryRecorder {
             windowTitle: snapshot.window?.title,
             urlDomain: ObservationPolicy.normalizedDomain(snapshot.window?.url),
             role: snapshot.element?.role,
-            subrole: snapshot.element?.subrole
+            subrole: snapshot.element?.subrole,
+            privateWindow: snapshot.isPrivateWindow
         )
     }
 

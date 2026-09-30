@@ -5,14 +5,15 @@ import Foundation
 import HistoryCore
 
 /// `open-history bench <bundle-id | pid:N> [iterations] [--json FILE]
-/// [--web-accessibility]` measures what the recorder's accessibility work
+/// [--web-accessibility] [--apple-events]` measures what the recorder's accessibility work
 /// costs a running application, per recorded-event path.
 ///
 /// The recorder does not switch Chromium and Electron apps into web
 /// accessibility mode by default, so neither does the bench. With
 /// `--web-accessibility` it sets `AXManualAccessibility` for the run (to
 /// measure what `"webAccessibility": "manual"` costs) and clears it at the
-/// end.
+/// end. `--apple-events` adds a row for the scripting-dictionary tab lookup
+/// of known browsers (needs the Automation permission for the terminal).
 ///
 /// Every accessibility request is answered on the target's main thread, so
 /// the target's CPU time and energy are the numbers that matter. They come
@@ -26,11 +27,17 @@ func runBench(arguments: [String]) {
     var positional: [String] = []
     var jsonPath: String?
     var webAccessibility = false
+    var appleEvents = false
     var index = 0
     while index < arguments.count {
         if arguments[index] == "--json", index + 1 < arguments.count {
             jsonPath = arguments[index + 1]
             index += 2
+            continue
+        }
+        if arguments[index] == "--apple-events" {
+            appleEvents = true
+            index += 1
             continue
         }
         if arguments[index] == "--web-accessibility" {
@@ -56,7 +63,7 @@ func runBench(arguments: [String]) {
     guard let application else {
         fputs(
             "Usage: open-history bench <bundle-id | pid:N> [iterations] [--json FILE] " +
-                "[--web-accessibility]\n",
+                "[--web-accessibility] [--apple-events]\n",
             stderr
         )
         exit(2)
@@ -187,6 +194,19 @@ func runBench(arguments: [String]) {
             resolver.url(window: window, windowKey: "bench", title: nil,
                          bundleIdentifier: bundleIdentifier)?.count ?? 0
         }
+    }
+    if appleEvents, let browser = ScriptableBrowser.known(bundleIdentifier) {
+        var outcome = ""
+        measure("browser tab (Apple Events)") {
+            let result = BrowserAppleEvents.activeTab(
+                processIdentifier: pid,
+                browser: browser,
+                timeout: 2
+            )
+            outcome = result.tab?.url == nil ? "\(result.outcome)" : "ok"
+            return result.tab?.url?.count ?? 0
+        }
+        print("apple events: \(outcome)")
     }
     let focused = AXAttributeValues(
         AXUIElementCreateApplication(pid),

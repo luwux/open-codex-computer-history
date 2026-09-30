@@ -42,7 +42,7 @@ cat >"$app/Contents/Info.plist" <<'PLIST'
   <key>LSUIElement</key>
   <true/>
   <key>NSAppleEventsUsageDescription</key>
-  <string>Open Computer History may activate applications during user-requested verification.</string>
+  <string>Open Computer History reads the address and title of the active tab in your browser to record which page was open. It never navigates, clicks, or changes the browser.</string>
   <key>NSHumanReadableCopyright</key>
   <string>Copyright 2026 Open Computer History contributors</string>
 </dict>
