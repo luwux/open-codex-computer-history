@@ -164,6 +164,7 @@ final class HistoryRecorder {
         }
         presenceObservers.removeAll()
         removeAccessibilityObserver()
+        releaseWebAccessibility()
         if let eventTapSource {
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), eventTapSource, .commonModes)
         }
@@ -613,47 +614,45 @@ final class HistoryRecorder {
         }
     }
 
-    /// Chromium and Electron build their web accessibility tree only when an
-    /// assistive client asks. `AXManualAccessibility` is the targeted switch;
-    /// Chromium browsers that ignore it fall back to `AXEnhancedUserInterface`.
-    private func enableWebAccessibility(processIdentifier: pid_t) {
-        guard webAccessibilityProcesses.insert(processIdentifier).inserted else {
-            return
-        }
-        let application = AXUIElementCreateApplication(processIdentifier)
-        AXUIElementSetAttributeValue(
-            application,
-            "AXManualAccessibility" as CFString,
-            kCFBooleanTrue
-        )
-        guard let bundleIdentifier = NSRunningApplication(
+    /// Chromium and Electron build their web accessibility tree only while an
+    /// assistive client requests it, and keeping it costs them CPU and energy
+    /// on every page change for the rest of the process's life. The recorder
+    /// requests it only when `webAccessibility` is `manual` for the app, only
+    /// through `AXManualAccessibility` (never `AXEnhancedUserInterface`, the
+    /// most expensive mode, which also slows window managers), and clears it
+    /// again when recording pauses or stops.
+    private func requestWebAccessibilityIfConfigured(processIdentifier: pid_t) {
+        let bundleIdentifier = NSRunningApplication(
             processIdentifier: processIdentifier
-        )?.bundleIdentifier,
-            ObservationPolicy.chromiumBrowserBundleIdentifiers.contains(bundleIdentifier)
+        )?.bundleIdentifier
+        guard policy.webAccessibility.requestsAccessibility(for: bundleIdentifier),
+              webAccessibilityProcesses.insert(processIdentifier).inserted
         else {
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self, !self.stopped, self.recorderState == .running,
-                  let window = AXAttributeValues(
-                      application,
-                      [kAXFocusedWindowAttribute as CFString]
-                  ).element(kAXFocusedWindowAttribute as CFString)
-            else {
-                return
-            }
-            if !AXTreeCapture.hasWebArea(under: window) {
-                AXUIElementSetAttributeValue(
-                    application,
-                    "AXEnhancedUserInterface" as CFString,
-                    kCFBooleanTrue
-                )
-            }
+        AXUIElementSetAttributeValue(
+            AXUIElementCreateApplication(processIdentifier),
+            "AXManualAccessibility" as CFString,
+            kCFBooleanTrue
+        )
+    }
+
+    /// Undoes `requestWebAccessibilityIfConfigured` for every app it touched.
+    private func releaseWebAccessibility() {
+        for processIdentifier in webAccessibilityProcesses
+            where NSRunningApplication(processIdentifier: processIdentifier) != nil
+        {
+            AXUIElementSetAttributeValue(
+                AXUIElementCreateApplication(processIdentifier),
+                "AXManualAccessibility" as CFString,
+                kCFBooleanFalse
+            )
         }
+        webAccessibilityProcesses.removeAll()
     }
 
     private func installAccessibilityObserver(processIdentifier: pid_t) {
-        enableWebAccessibility(processIdentifier: processIdentifier)
+        requestWebAccessibilityIfConfigured(processIdentifier: processIdentifier)
         removeAccessibilityObserver()
 
         var observer: AXObserver?
@@ -1134,12 +1133,14 @@ final class HistoryRecorder {
     }
 
     /// Paused costs nothing in other apps: no event tap, no accessibility
-    /// observer, no pending accessibility work, no media polling.
+    /// observer, no web accessibility mode requested by the recorder, no
+    /// pending accessibility work, no media polling.
     private func suspendObservation() {
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
         removeAccessibilityObserver()
+        releaseWebAccessibility()
         axDebounceTasks.values.forEach { $0.cancel() }
         axDebounceTasks.removeAll()
         windowRetryTask?.cancel()

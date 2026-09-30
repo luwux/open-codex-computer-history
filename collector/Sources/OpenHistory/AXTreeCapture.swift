@@ -97,16 +97,6 @@ enum AXTreeCapture {
         )
     }
 
-    /// Whether the window exposes any web area (used to decide whether a
-    /// Chromium browser needs `AXEnhancedUserInterface`).
-    static func hasWebArea(under root: AXUIElement) -> Bool {
-        var reader = NodeReader(
-            settings: AXCaptureSettings(),
-            deadline: DispatchTime.now().uptimeNanoseconds + 250_000_000
-        )
-        return !webAreas(under: root, reader: &reader).isEmpty
-    }
-
     /// Breadth-first search for web areas near the top of a window. Nodes
     /// read here are cached by `reader`, so the render pass does not read
     /// them again.

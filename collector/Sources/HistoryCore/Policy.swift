@@ -46,17 +46,20 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
     public var showMenuBarIcon: Bool
     public var captureText: Bool
     public var axCapture: AXCaptureSettings
+    public var webAccessibility: WebAccessibilitySettings
 
     public init(
         observation: ObservationSettings = ObservationSettings(),
         showMenuBarIcon: Bool = true,
         captureText: Bool = true,
-        axCapture: AXCaptureSettings = AXCaptureSettings()
+        axCapture: AXCaptureSettings = AXCaptureSettings(),
+        webAccessibility: WebAccessibilitySettings = WebAccessibilitySettings()
     ) {
         self.observation = observation
         self.showMenuBarIcon = showMenuBarIcon
         self.captureText = captureText
         self.axCapture = axCapture
+        self.webAccessibility = webAccessibility
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -64,6 +67,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         case showMenuBarIcon
         case captureText
         case axCapture
+        case webAccessibility
     }
 
     public init(from decoder: Decoder) throws {
@@ -84,6 +88,10 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
             AXCaptureSettings.self,
             forKey: .axCapture
         ) ?? AXCaptureSettings()
+        webAccessibility = try container.decodeIfPresent(
+            WebAccessibilitySettings.self,
+            forKey: .webAccessibility
+        ) ?? WebAccessibilitySettings()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -92,6 +100,7 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         try container.encode(showMenuBarIcon, forKey: .showMenuBarIcon)
         try container.encode(captureText, forKey: .captureText)
         try container.encode(axCapture, forKey: .axCapture)
+        try container.encode(webAccessibility, forKey: .webAccessibility)
     }
 
     public func allowsApplication(_ bundleIdentifier: String) -> Bool {
@@ -262,7 +271,9 @@ public struct ObservationPolicy: Codable, Equatable, Sendable {
         return url.absoluteString
     }
 
-    /// Chromium-based browsers, whose web accessibility tree must be requested.
+    /// Chromium-based browsers. Their web accessibility tree exists only while
+    /// an assistive client requests it, and they can serve the DevTools
+    /// protocol when launched with a remote debugging port.
     public static let chromiumBrowserBundleIdentifiers: Set<String> = [
         "com.google.Chrome",
         "com.google.Chrome.beta",
